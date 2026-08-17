@@ -1,0 +1,15 @@
+data:
+  m_def: lab_data.schema_packages.schema_package.OpticalExperiment
+  experiment_id: TEST-001
+  sample_id: D356
+  experiment_date: '2026-08-17'
+  operator: ShiLabCMU
+  measurement_type: photocurrent
+  temperature: 3.6
+  magnetic_field: 9
+  polarization: sigma_plus
+  instrument: WinSpec
+  excitation_wavelength: 620
+  excitation_power: 10
+  grating: 1200
+  notes: Test optical experiment

@@ -1,0 +1,35 @@
+{
+  "template": "https://github.com/FAIRmat-NFDI/cookiecutter-nomad-plugin",
+  "commit": "b67d40d4d5d4be4a639baa56ecf9af41f1680830",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "full_name": "ShiLabCMU",
+      "email": "commonlab02@gmail.com",
+      "github_username": "ylylyl98",
+      "plugin_name": "lab-data",
+      "module_name": "lab_data",
+      "short_description": "NOMAD schemas, parsers, APIs, dashboards, and analysis tools for experimental lab data",
+      "version": "0.1.0",
+      "license": "MIT",
+      "include_schema_package": true,
+      "include_normalizer": false,
+      "include_parser": true,
+      "include_app": true,
+      "include_example_uploads": false,
+      "include_action": true,
+      "include_api": true,
+      "include_north_tools": true,
+      "north_tool_name": "Lab Analysis",
+      "include_dashboard": true,
+      "include_citation_file": false,
+      "_copy_without_render": [
+        "*.html",
+        "*.png"
+      ],
+      "_template": "https://github.com/FAIRmat-NFDI/cookiecutter-nomad-plugin",
+      "_commit": "b67d40d4d5d4be4a639baa56ecf9af41f1680830"
+    }
+  },
+  "directory": null
+}
