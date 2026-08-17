@@ -1,5 +1,9 @@
 from nomad.datamodel.data import EntryData
-from nomad.datamodel.metainfo.annotations import ELNAnnotation, ELNComponentEnum
+from nomad.datamodel.metainfo.annotations import (
+    BrowserAnnotation,
+    ELNAnnotation,
+    ELNComponentEnum,
+)
 from nomad.metainfo import MEnum, Quantity, SchemaPackage, Section
 
 m_package = SchemaPackage()
@@ -135,6 +139,9 @@ class OpticalExperiment(EntryData):
         a_eln=ELNAnnotation(
             component=ELNComponentEnum.FileEditQuantity
         ),
+        a_browser=BrowserAnnotation(
+            adaptor='RawFileAdaptor'
+        ),
     )
 
     processed_data_file = Quantity(
@@ -143,8 +150,10 @@ class OpticalExperiment(EntryData):
         a_eln=ELNAnnotation(
             component=ELNComponentEnum.FileEditQuantity
         ),
+        a_browser=BrowserAnnotation(
+            adaptor='RawFileAdaptor'
+        ),
     )
-
 
     notes = Quantity(
         type=str,
