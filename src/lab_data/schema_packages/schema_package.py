@@ -129,6 +129,23 @@ class OpticalExperiment(EntryData):
         ),
     )
 
+    raw_data_file = Quantity(
+        type=str,
+        description='Primary raw data file for this measurement.',
+        a_eln=ELNAnnotation(
+            component=ELNComponentEnum.FileEditQuantity
+        ),
+    )
+
+    processed_data_file = Quantity(
+        type=str,
+        description='Primary processed data file for this measurement.',
+        a_eln=ELNAnnotation(
+            component=ELNComponentEnum.FileEditQuantity
+        ),
+    )
+
+
     notes = Quantity(
         type=str,
         description='Free-form experimental notes.',
