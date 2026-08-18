@@ -150,6 +150,94 @@ def test_file_roles_and_paths_are_preserved():
     ]
 
 
+def _experiment_with_intermediate(intermediate, raw=None, processed=None):
+    return ExperimentProposal(
+        metadata=ExperimentMetadata(),
+        raw_files=raw if raw is not None else [],
+        processed_files=processed if processed is not None else [],
+        figure_files=[],
+        intermediate_files=intermediate,
+        warnings=[],
+        confidence=0.0,
+    )
+
+
+def test_intermediate_files_are_preserved():
+    experiment = _single_experiment(
+        _experiment_with_intermediate(
+            ['Intermediate Data/D356_sub.csv'],
+            raw=['Initial Data/D356.csv'],
+            processed=['Processed Data/D356_PL.dat'],
+        )
+    )
+
+    assert experiment.intermediate_files == ['Intermediate Data/D356_sub.csv']
+
+
+def test_intermediate_files_serialize_in_json():
+    result = build_import_proposal(
+        ScanResult(
+            experiments=[
+                _experiment_with_intermediate(
+                    ['Intermediate Data/D356_sub.csv']
+                )
+            ]
+        )
+    )
+
+    payload = json.loads(result.to_json())
+
+    assert payload['experiments'][0]['intermediate_files'] == [
+        'Intermediate Data/D356_sub.csv'
+    ]
+
+
+def test_raw_and_intermediate_without_processed_remain_unreviewed():
+    experiment = _single_experiment(
+        _experiment_with_intermediate(
+            ['Intermediate Data/D356_sub.csv'],
+            raw=['Initial Data/D356.csv'],
+        )
+    )
+
+    assert experiment.intermediate_files == ['Intermediate Data/D356_sub.csv']
+    assert experiment.processed_files == []
+    assert experiment.needs_review is False
+
+
+def test_no_review_due_solely_to_missing_counterpart():
+    experiment = _single_experiment(
+        _proposal(raw=['Initial Data/D356.csv'])
+    )
+
+    assert experiment.raw_files == ['Initial Data/D356.csv']
+    assert experiment.intermediate_files == []
+    assert experiment.processed_files == []
+    assert experiment.needs_review is False
+
+
+def test_raw_intermediate_only_with_separate_processed_experiment_unreviewed():
+    result = build_import_proposal(
+        ScanResult(
+            experiments=[
+                _experiment_with_intermediate(
+                    ['Intermediate Data/D356_sub.csv'],
+                    raw=['Initial Data/D356.csv'],
+                ),
+                _proposal(
+                    raw=['Initial Data/D357.csv'],
+                    processed=['Processed Data/D357_PL.dat'],
+                ),
+            ]
+        )
+    )
+
+    raw_intermediate = result.experiments[0]
+    assert raw_intermediate.intermediate_files == ['Intermediate Data/D356_sub.csv']
+    assert raw_intermediate.processed_files == []
+    assert raw_intermediate.needs_review is False
+
+
 def test_experiment_warnings_and_confidence_are_preserved():
     source = _full_scan_result()
 
@@ -555,14 +643,17 @@ def test_proposal_cli_unknown_suffix_has_no_fabricated_lineage(
     code, captured = _run_proposal_cli(tmp_path, capsys)
 
     assert code == 0
-    experiment = json.loads(captured.out)['experiments'][0]
-    assert experiment['lineage'] == []
-    assert any(
-        entry['source_role'] == 'raw'
-        and entry['source'] == 'Initial Data/D356.csv'
-        and entry['target_role'] == 'processed'
-        for entry in experiment['unresolved_relationships']
-    )
+    experiments = json.loads(captured.out)['experiments']
+    raw_experiment = experiments[0]
+    assert raw_experiment['lineage'] == []
+    assert raw_experiment['raw_files'] == ['Initial Data/D356.csv']
+    assert raw_experiment['processed_files'] == []
+    assert raw_experiment['needs_review'] is False
+    mystery_experiment = experiments[1]
+    assert mystery_experiment['lineage'] == []
+    assert mystery_experiment['processed_files'] == [
+        'Processed Data/D356_mystery.dat'
+    ]
 
 
 def test_proposal_cli_repeated_is_deterministic(tmp_path, capsys):
@@ -575,3 +666,56 @@ def test_proposal_cli_repeated_is_deterministic(tmp_path, capsys):
     assert first.out == second.out
     assert first.err == second.err
     assert json.loads(first.out) == json.loads(second.out)
+
+
+def test_fixed_gate_values_survive_conversion():
+    experiment = _single_experiment(
+        _proposal(
+            raw=['Initial Data/D356.csv'],
+            metadata=ExperimentMetadata(
+                sample_id='D356',
+                fixed_gate_values={'TG': 0.0, 'BG': 0.0},
+                gate_constraints=[
+                    GateConstraint(
+                        raw_expression='TG-BG=0Rev',
+                        coefficients={'TG': 1.0, 'BG': -1.0},
+                        control_mode='constant_displacement_field',
+                        sweep_direction='reverse',
+                    )
+                ],
+            ),
+        )
+    )
+
+    assert experiment.fixed_gate_values == {'TG': 0.0, 'BG': 0.0}
+    assert experiment.gate_constraints[0].sweep_direction == 'reverse'
+
+
+def test_fixed_gate_values_and_sweep_direction_survive_json():
+    result = build_import_proposal(
+        ScanResult(
+            experiments=[
+                _proposal(
+                    raw=['Initial Data/D356.csv'],
+                    metadata=ExperimentMetadata(
+                        sample_id='D356',
+                        fixed_gate_values={'TG': 0.0, 'BG': 0.0},
+                        gate_constraints=[
+                            GateConstraint(
+                                raw_expression='TG-BG=0Rev',
+                                coefficients={'TG': 1.0, 'BG': -1.0},
+                                control_mode='constant_displacement_field',
+                                sweep_direction='reverse',
+                            )
+                        ],
+                    ),
+                )
+            ]
+        )
+    )
+
+    payload = json.loads(result.to_json())
+    experiment = payload['experiments'][0]
+    assert experiment['fixed_gate_values'] == {'TG': 0.0, 'BG': 0.0}
+    assert experiment['gate_constraints'][0]['sweep_direction'] == 'reverse'
+    assert experiment['gate_constraints'][0]['raw_expression'] == 'TG-BG=0Rev'

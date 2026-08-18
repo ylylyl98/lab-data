@@ -80,6 +80,7 @@ class ExperimentImportProposal:
     bias_start_V: float | None = None
     bias_stop_V: float | None = None
     back_gate_topology: str | None = None
+    fixed_gate_values: dict[str, float] = field(default_factory=dict)
     gate_constraints: list[GateConstraint] = field(default_factory=list)
     electrical_connections: list[ElectricalConnection] = field(
         default_factory=list
@@ -87,6 +88,7 @@ class ExperimentImportProposal:
     raw_files: list[str] = field(default_factory=list)
     processed_files: list[str] = field(default_factory=list)
     figure_files: list[str] = field(default_factory=list)
+    intermediate_files: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     confidence: float = 0.0
 
@@ -123,6 +125,7 @@ def _copy_gate_constraints(
             raw_expression=constraint.raw_expression,
             coefficients=dict(constraint.coefficients),
             control_mode=constraint.control_mode,
+            sweep_direction=constraint.sweep_direction,
         )
         for constraint in constraints
     ]
@@ -232,6 +235,7 @@ def _unresolved_entry(
 
 def _build_lineage(
     proposal: ExperimentProposal,
+    has_processed_files: bool,
 ) -> tuple[list[LineageEdge], list[dict]]:
     """Build explicit lineage edges from the known filename families only."""
 
@@ -253,14 +257,15 @@ def _build_lineage(
             if _raw_to_processed_rule(raw_stem, stem) is not None
         )
         if not matched_stems:
-            unresolved.append(
-                _unresolved_entry(
-                    'raw',
-                    raw_file,
-                    'processed',
-                    'no processed file with a known derivation',
+            if has_processed_files:
+                unresolved.append(
+                    _unresolved_entry(
+                        'raw',
+                        raw_file,
+                        'processed',
+                        'no processed file with a known derivation',
+                    )
                 )
-            )
             continue
         for processed_stem in matched_stems:
             candidates = processed_by_stem[processed_stem]
@@ -356,6 +361,8 @@ def _build_provenance(
 
     if metadata.rotations_deg:
         add('rotations_deg', list(metadata.rotations_deg))
+    if metadata.fixed_gate_values:
+        add('fixed_gate_values', dict(metadata.fixed_gate_values))
     if metadata.gate_constraints:
         add(
             'gate_constraints',
@@ -376,7 +383,9 @@ def _build_experiment(
     """Copy one scanner proposal into a flat import proposal."""
 
     metadata = proposal.metadata
-    lineage, unresolved_relationships = _build_lineage(proposal)
+    lineage, unresolved_relationships = _build_lineage(
+        proposal, bool(proposal.processed_files)
+    )
     unresolved_metadata: list = []
     needs_review = (
         bool(proposal.warnings)
@@ -406,6 +415,7 @@ def _build_experiment(
         bias_start_V=metadata.bias_start_V,
         bias_stop_V=metadata.bias_stop_V,
         back_gate_topology=metadata.back_gate_topology,
+        fixed_gate_values=dict(metadata.fixed_gate_values),
         gate_constraints=_copy_gate_constraints(metadata.gate_constraints),
         electrical_connections=_copy_electrical_connections(
             metadata.electrical_connections
@@ -413,6 +423,7 @@ def _build_experiment(
         raw_files=list(proposal.raw_files),
         processed_files=list(proposal.processed_files),
         figure_files=list(proposal.figure_files),
+        intermediate_files=list(proposal.intermediate_files),
         warnings=list(proposal.warnings),
         confidence=proposal.confidence,
         lineage=lineage,

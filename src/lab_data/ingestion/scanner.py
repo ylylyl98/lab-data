@@ -29,6 +29,16 @@ SUPPORTED_EXTENSIONS = frozenset({'.csv', '.dat', '.xlsx', '.xls', '.png'})
 
 _RAW_DIR = 'initial data'
 _PROCESSED_DIR = 'processed data'
+_INTERMEDIATE_DIR = 'initial data after process'
+_INTERMEDIATE_DIR_ALIAS = 'initial data after processing'
+
+# Exact folder-name aliases. A file located anywhere under one of these
+# folders is assigned the mapped role. Extend this table to add new folders
+# without changing the classification logic below.
+_FOLDER_ROLE_ALIASES = {
+    _INTERMEDIATE_DIR: 'intermediate',
+    _INTERMEDIATE_DIR_ALIAS: 'intermediate',
+}
 
 # Whole-word role tokens removed from stems before grouping so that, for
 # example, ``D356_PL_raw.csv`` and ``D356_PL_processed.csv`` share a key.
@@ -95,6 +105,10 @@ _BIAS_RE = re.compile(
 )
 _TERM_RE = re.compile(r'[+-]?(?:\d+(?:[.p]\d+)?)?(?:tg|bg1|bg2|bg|cg)')
 _GATE_SUFFIX_RE = re.compile(r'(tg|bg1|bg2|bg|cg)$')
+_GATE_VARIABLE_TOKEN = r'(?:tg|bg1|bg2|bg|cg)'
+_FIXED_GATE_VALUES_RE = re.compile(
+    rf'^(?:{_GATE_VARIABLE_TOKEN}=)+{_GATE_VARIABLE_TOKEN}=0$', re.I
+)
 
 
 @dataclass
@@ -104,6 +118,7 @@ class GateConstraint:
     raw_expression: str
     coefficients: dict[str, float]
     control_mode: str | None = None
+    sweep_direction: str | None = None
 
 
 @dataclass
@@ -138,6 +153,7 @@ class ExperimentMetadata:
     bias_start_V: float | None = None
     bias_stop_V: float | None = None
     back_gate_topology: str | None = None
+    fixed_gate_values: dict[str, float] = field(default_factory=dict)
     gate_constraints: list[GateConstraint] = field(default_factory=list)
     electrical_connections: list[ElectricalConnection] = field(
         default_factory=list
@@ -146,12 +162,13 @@ class ExperimentMetadata:
 
 @dataclass
 class ExperimentProposal:
-    """A conservative grouping of related raw, processed, and figure files."""
+    """A conservative grouping of related experiment files by role."""
 
     metadata: ExperimentMetadata = field(default_factory=ExperimentMetadata)
     raw_files: list[str] = field(default_factory=list)
     processed_files: list[str] = field(default_factory=list)
     figure_files: list[str] = field(default_factory=list)
+    intermediate_files: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     confidence: float = 0.0
 
@@ -298,6 +315,7 @@ class _ElectricalExtraction:
     active_gate_configuration: str | None = None
     bias_start_V: float | None = None
     bias_stop_V: float | None = None
+    fixed_gate_values: dict[str, float] = field(default_factory=dict)
     gate_constraints: list[GateConstraint] = field(default_factory=list)
     electrical_connections: list[ElectricalConnection] = field(
         default_factory=list
@@ -365,6 +383,51 @@ def _infer_back_gate_topology(gates: set[str]) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _parse_equality_token(
+    token: str,
+) -> tuple[dict[str, float] | None, GateConstraint | None, set[str]]:
+    """Parse a supported ``=`` electrical token.
+
+    Returns ``(fixed_gate_values, constraint, gates)``. A fixed-value token
+    such as ``TG=BG=0`` maps its gate names to ``0.0``; a supported constraint
+    such as ``TG+BG=0Rev`` yields a :class:`GateConstraint` with
+    ``sweep_direction='reverse'``; otherwise both are ``None``.
+    """
+
+    lower = token.lower()
+    fixed_gates = _FIXED_GATE_VALUES_RE.match(lower)
+    if fixed_gates:
+        gates = {part.upper() for part in lower.split('=')[:-1]}
+        return ({gate: 0.0 for gate in gates}, None, gates)
+
+    left, right = lower.split('=', 1)
+    right_value = right.strip()
+    sweep_direction = None
+    if right_value.endswith('rev'):
+        sweep_direction = 'reverse'
+        right_value = right_value[:-3].strip()
+    if right_value != '0':
+        return None, None, set()
+
+    coefficients = _parse_constraint_terms(left.strip())
+    if coefficients is None or set(coefficients) not in (
+        {'TG', 'BG'},
+        {'BG1', 'BG2'},
+    ):
+        return None, None, set()
+
+    return (
+        None,
+        GateConstraint(
+            raw_expression=token,
+            coefficients=coefficients,
+            control_mode=_control_mode(coefficients),
+            sweep_direction=sweep_direction,
+        ),
+        set(coefficients),
+    )
+
+
 def _extract_electrical(stem: str) -> tuple[_ElectricalExtraction, list[str]]:
     """Extract supported electrical metadata from an original stem."""
 
@@ -410,22 +473,15 @@ def _extract_electrical(stem: str) -> tuple[_ElectricalExtraction, list[str]]:
             continue
 
         if '=' in lower:
-            left, right = lower.split('=', 1)
-            if right.strip() == '0':
-                coefficients = _parse_constraint_terms(left.strip())
-                if coefficients is not None and set(coefficients) in (
-                    {'TG', 'BG'},
-                    {'BG1', 'BG2'},
-                ):
-                    result.gate_constraints.append(
-                        GateConstraint(
-                            raw_expression=token,
-                            coefficients=coefficients,
-                            control_mode=_control_mode(coefficients),
-                        )
-                    )
-                    result.gates.update(coefficients)
-                    continue
+            fixed_values, constraint, gates = _parse_equality_token(token)
+            if fixed_values:
+                result.fixed_gate_values.update(fixed_values)
+                result.gates.update(gates)
+                continue
+            if constraint is not None:
+                result.gate_constraints.append(constraint)
+                result.gates.update(gates)
+                continue
             warnings.append(f'unsupported electrical expression: {token}')
             continue
 
@@ -481,6 +537,7 @@ def _dedup_constraints(items: list[GateConstraint]) -> list[GateConstraint]:
         key = (
             tuple(sorted(constraint.coefficients.items())),
             constraint.control_mode,
+            constraint.sweep_direction,
         )
         if key not in seen:
             seen.add(key)
@@ -523,6 +580,7 @@ def _merge_electrical(
     stems: list[str],
 ) -> tuple[
     dict[str, object | None],
+    dict[str, float],
     list[GateConstraint],
     list[ElectricalConnection],
     list[str],
@@ -532,6 +590,7 @@ def _merge_electrical(
     scalar_seen: dict[str, set] = {
         name: set() for name in _ELECTRICAL_SCALAR_FIELDS
     }
+    fixed_gate_values_seen: dict[str, set[float]] = {}
     constraints: list[GateConstraint] = []
     connections: list[ElectricalConnection] = []
     warnings: list[str] = []
@@ -550,6 +609,8 @@ def _merge_electrical(
             value = getattr(electrical, attribute)
             if value is not None:
                 scalar_seen[field_name].add(value)
+        for gate, value in electrical.fixed_gate_values.items():
+            fixed_gate_values_seen.setdefault(gate, set()).add(value)
         topology, topology_warning = _infer_back_gate_topology(
             electrical.gates
         )
@@ -566,8 +627,20 @@ def _merge_electrical(
             scalar_seen[field_name], field_name, warnings
         )
 
+    merged_fixed_gate_values: dict[str, float] = {}
+    for gate in sorted(fixed_gate_values_seen):
+        candidates = fixed_gate_values_seen[gate]
+        if len(candidates) == 1:
+            merged_fixed_gate_values[gate] = next(iter(candidates))
+        else:
+            warnings.append(
+                f'conflicting fixed_gate_values for {gate}: '
+                f'{sorted(candidates)}'
+            )
+
     return (
         merged,
+        merged_fixed_gate_values,
         _dedup_constraints(constraints),
         _dedup_connections(connections),
         warnings,
@@ -611,7 +684,13 @@ def _merge_metadata(stems: list[str]) -> tuple[ExperimentMetadata, list[str]]:
         else:
             merged[field_name] = None
 
-    electrical_merged, constraints, connections, electrical_warnings = (
+    (
+        electrical_merged,
+        fixed_gate_values,
+        constraints,
+        connections,
+        electrical_warnings,
+    ) = (
         _merge_electrical(stems)
     )
     warnings.extend(electrical_warnings)
@@ -639,6 +718,7 @@ def _merge_metadata(stems: list[str]) -> tuple[ExperimentMetadata, list[str]]:
             bias_start_V=electrical_merged['bias_start_V'],
             bias_stop_V=electrical_merged['bias_stop_V'],
             back_gate_topology=electrical_merged['back_gate_topology'],
+            fixed_gate_values=fixed_gate_values,
             gate_constraints=constraints,
             electrical_connections=connections,
         ),
@@ -669,6 +749,24 @@ def _confidence(
     return round(min(score, 1.0), 2)
 
 
+def _classify_role(parent_dirs: set[str], extension: str) -> str | None:
+    """Return the role for a file given its parent folder components.
+
+    Exact folder aliases take precedence, then the raw folder, then the
+    processed folder (where PNG files are figures). Returns ``None`` when no
+    recognised folder matches.
+    """
+
+    for folder, role in _FOLDER_ROLE_ALIASES.items():
+        if folder in parent_dirs:
+            return role
+    if _RAW_DIR in parent_dirs:
+        return 'raw'
+    if _PROCESSED_DIR in parent_dirs:
+        return 'figure' if extension == '.png' else 'processed'
+    return None
+
+
 def scan_directory(root: str | Path) -> ScanResult:
     """Recursively scan ``root`` and return a structured :class:`ScanResult`."""
 
@@ -695,19 +793,17 @@ def scan_directory(root: str | Path) -> ScanResult:
             continue
 
         parent_dirs = {_normalize_component(part) for part in rel_path.parts[:-1]}
-        if _RAW_DIR in parent_dirs:
-            category = 'raw'
-        elif _PROCESSED_DIR in parent_dirs:
-            category = 'figure' if extension == '.png' else 'processed'
-        else:
+        category = _classify_role(parent_dirs, extension)
+        if category is None:
             unclassified.append(relative)
             warnings.append(f'outside recognised data directories: {relative}')
             continue
 
         key = _group_key(file_path.stem)
-        groups.setdefault(key, {'raw': [], 'processed': [], 'figure': []})[
-            category
-        ].append(relative)
+        groups.setdefault(
+            key,
+            {'raw': [], 'processed': [], 'figure': [], 'intermediate': []},
+        )[category].append(relative)
         stems_by_key.setdefault(key, set()).add(file_path.stem)
 
     experiments: list[ExperimentProposal] = []
@@ -716,6 +812,7 @@ def scan_directory(root: str | Path) -> ScanResult:
         raw_files = sorted(bucket['raw'])
         processed_files = sorted(bucket['processed'])
         figure_files = sorted(bucket['figure'])
+        intermediate_files = sorted(bucket['intermediate'])
         metadata, metadata_warnings = _merge_metadata(sorted(stems_by_key[key]))
 
         proposal_warnings: list[str] = list(metadata_warnings)
@@ -730,6 +827,7 @@ def scan_directory(root: str | Path) -> ScanResult:
                 raw_files=raw_files,
                 processed_files=processed_files,
                 figure_files=figure_files,
+                intermediate_files=intermediate_files,
                 warnings=proposal_warnings,
                 confidence=_confidence(metadata, len(raw_files), len(processed_files)),
             )

@@ -713,3 +713,125 @@ def test_unrelated_p_words_remain_unset(tmp_path):
     exp = _scan_single(tmp_path, 'D356_plot_phase_power_peak')
 
     assert exp.metadata.measurement_point_label is None
+
+
+def test_intermediate_folder_maps_to_intermediate_role(tmp_path):
+    _write(tmp_path / 'Initial Data after process' / 'D356_PL.csv')
+
+    exp = scan_directory(tmp_path).experiments[0]
+
+    assert exp.intermediate_files == ['Initial Data after process/D356_PL.csv']
+    assert exp.raw_files == []
+    assert exp.processed_files == []
+    assert exp.figure_files == []
+
+
+def test_raw_intermediate_processed_figure_separation(tmp_path):
+    _write(tmp_path / 'Initial Data' / 'D356_PL.csv')
+    _write(tmp_path / 'Initial Data after process' / 'D356_PL.csv')
+    _write(tmp_path / 'Processed Data' / 'D356_PL.csv')
+    _write(tmp_path / 'Processed Data' / 'D356_PL.png')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == 1
+    exp = result.experiments[0]
+    assert exp.raw_files == ['Initial Data/D356_PL.csv']
+    assert exp.intermediate_files == [
+        'Initial Data after process/D356_PL.csv'
+    ]
+    assert exp.processed_files == ['Processed Data/D356_PL.csv']
+    assert exp.figure_files == ['Processed Data/D356_PL.png']
+
+
+def test_initial_data_after_processing_alias_maps_to_intermediate(tmp_path):
+    _write(tmp_path / 'Initial data after processing' / 'D356_PL.csv')
+    _write(tmp_path / 'Initial Data after process' / 'D356_PL.csv')
+    _write(tmp_path / 'Processed Data' / 'D356_PL.csv')
+    _write(tmp_path / 'Processed Data' / 'D356_PL.png')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == 1
+    exp = result.experiments[0]
+    assert exp.intermediate_files == [
+        'Initial Data after process/D356_PL.csv',
+        'Initial data after processing/D356_PL.csv',
+    ]
+    assert exp.raw_files == []
+    assert exp.processed_files == ['Processed Data/D356_PL.csv']
+    assert exp.figure_files == ['Processed Data/D356_PL.png']
+
+
+def test_nested_intermediate_path_uses_relative_posix(tmp_path):
+    _write(tmp_path / 'Initial Data after process' / 'sub' / 'D356_PL.csv')
+
+    exp = scan_directory(tmp_path).experiments[0]
+
+    assert exp.intermediate_files == [
+        'Initial Data after process/sub/D356_PL.csv'
+    ]
+    assert exp.raw_files == []
+    assert exp.processed_files == []
+    assert exp.figure_files == []
+
+
+def test_unknown_folder_is_preserved_as_unclassified(tmp_path):
+    _write(tmp_path / 'Unknown Data' / 'D356_PL.csv')
+
+    result = scan_directory(tmp_path)
+
+    assert result.experiments == []
+    assert result.unclassified_files == ['Unknown Data/D356_PL.csv']
+    assert any(
+        'outside recognised data directories' in warning
+        for warning in result.warnings
+    )
+
+
+def test_intermediate_files_serialize_to_json(tmp_path):
+    _write(tmp_path / 'Initial Data after process' / 'D356_PL.csv')
+
+    result = scan_directory(tmp_path)
+    payload = json.loads(result.to_json())
+
+    assert payload['experiments'][0]['intermediate_files'] == [
+        'Initial Data after process/D356_PL.csv'
+    ]
+
+
+def test_tg_eq_bg_eq_0_is_fixed_values_not_constraint(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_TG=BG=0')
+
+    assert exp.metadata.fixed_gate_values == {'TG': 0.0, 'BG': 0.0}
+    assert exp.metadata.gate_constraints == []
+
+
+def test_tg_plus_bg_0_rev_reverse_sweep(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_TG+BG=0Rev')
+
+    constraint = _constraint(exp, 'TG+BG=0Rev')
+    assert constraint is not None
+    assert constraint.raw_expression == 'TG+BG=0Rev'
+    assert constraint.coefficients == {'TG': 1.0, 'BG': 1.0}
+    assert constraint.control_mode == 'constant_doping'
+    assert constraint.sweep_direction == 'reverse'
+
+
+def test_tg_minus_bg_0_rev_reverse_sweep(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_TG-BG=0Rev')
+
+    constraint = _constraint(exp, 'TG-BG=0Rev')
+    assert constraint is not None
+    assert constraint.raw_expression == 'TG-BG=0Rev'
+    assert constraint.coefficients == {'TG': 1.0, 'BG': -1.0}
+    assert constraint.control_mode == 'constant_displacement_field'
+    assert constraint.sweep_direction == 'reverse'
+
+
+def test_tg_plus_bg_without_rev_has_no_sweep_direction(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_TG+BG=0')
+
+    constraint = _constraint(exp, 'TG+BG=0')
+    assert constraint is not None
+    assert constraint.sweep_direction is None
