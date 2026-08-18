@@ -209,7 +209,10 @@ def _group_key(stem: str) -> str:
 
     Generic role tokens are removed wherever they appear, then recognized
     derived suffix tokens (``pl``, ``linear``, ``log``, ``avg``/``avgN``,
-    ``dr_r``/``drr``, and ``self``) are stripped from the end.
+    ``dr_r``/``drr``, and ``self``) are stripped from the end. A canonical
+    electrical identity is then appended so that electrically distinct
+    metadata (for example ``BG1+BG2=0`` versus ``BG1-BG2=0``, or a reversed
+    sweep) cannot merge after punctuation normalisation.
     """
 
     normalized = _normalize_stem(stem)
@@ -217,7 +220,86 @@ def _group_key(stem: str) -> str:
         token for token in normalized.split('_') if token not in _ROLE_TOKENS
     )
     core = _DERIVED_SUFFIX_RE.sub('', core)
+    identity = _electrical_identity(stem)
+    if identity:
+        return f'{core}@{identity}'
     return core or normalized
+
+
+def _canonical_float(value: float) -> str:
+    """Return a canonical signed textual form for a parsed float.
+
+    ``-0.0`` is normalised to ``0`` so that a spurious negative sign on zero
+    cannot split an otherwise identical experiment.
+    """
+
+    if value == 0.0:
+        return '0'
+    return repr(value)
+
+
+def _constraint_identity(constraint: GateConstraint) -> str:
+    """Return a canonical, order-independent identity for a gate constraint."""
+
+    coefficients = ','.join(
+        f'{gate}={_canonical_float(coefficient)}'
+        for gate, coefficient in sorted(constraint.coefficients.items())
+    )
+    return (
+        f'{coefficients}|{constraint.control_mode or ""}|'
+        f'{constraint.sweep_direction or ""}'
+    )
+
+
+def _connection_identity(connection: ElectricalConnection) -> str:
+    """Return a canonical identity for an electrical connection."""
+
+    return (
+        f'{",".join(connection.nodes)}|{connection.type}|'
+        f'{connection.source_role}'
+    )
+
+
+def _electrical_identity(stem: str) -> str:
+    """Build a canonical electrical identity from parsed metadata.
+
+    The identity is derived from the same ``_extract_electrical`` output used
+    for proposal metadata, so raw / intermediate / processed / figure
+    derivatives of one trajectory share an identical identity and continue to
+    group together, while electrically distinct metadata keeps separate
+    grouping keys.
+    """
+
+    electrical, _ = _extract_electrical(stem)
+    parts: list[str] = []
+
+    if electrical.fixed_top_gate_V is not None:
+        parts.append(f'fixtg={_canonical_float(electrical.fixed_top_gate_V)}')
+
+    if electrical.active_gate_configuration is not None:
+        parts.append(f'active={electrical.active_gate_configuration}')
+
+    for gate in sorted(electrical.fixed_gate_values):
+        parts.append(
+            f'fixed={gate}={_canonical_float(electrical.fixed_gate_values[gate])}'
+        )
+
+    for constraint in sorted(
+        electrical.gate_constraints, key=_constraint_identity
+    ):
+        parts.append(f'constraint={_constraint_identity(constraint)}')
+
+    for connection in sorted(
+        electrical.electrical_connections, key=_connection_identity
+    ):
+        parts.append(f'connection={_connection_identity(connection)}')
+
+    if electrical.bias_start_V is not None:
+        parts.append(f'bias_start={_canonical_float(electrical.bias_start_V)}')
+    if electrical.bias_stop_V is not None:
+        parts.append(f'bias_stop={_canonical_float(electrical.bias_stop_V)}')
+
+    return '|'.join(parts)
 
 
 def _extract_sample_id(stem: str) -> str | None:

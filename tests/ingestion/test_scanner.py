@@ -835,3 +835,102 @@ def test_tg_plus_bg_without_rev_has_no_sweep_direction(tmp_path):
     constraint = _constraint(exp, 'TG+BG=0')
     assert constraint is not None
     assert constraint.sweep_direction is None
+
+
+def test_plus_and_minus_constraints_are_separate_proposals(tmp_path):
+    plus = 'YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_BG1+BG2=0_Vb+8to-8'
+    minus = 'YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_BG1-BG2=0_Vb-8to+8'
+    _write(tmp_path / 'Initial Data' / f'{plus}.csv')
+    _write(tmp_path / 'Initial Data' / f'{minus}.csv')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == TWO_EXPERIMENTS
+    by_raw = {exp.raw_files[0]: exp for exp in result.experiments}
+    plus_exp = by_raw[f'Initial Data/{plus}.csv']
+    minus_exp = by_raw[f'Initial Data/{minus}.csv']
+
+    plus_constraint = _constraint(plus_exp, 'BG1+BG2=0')
+    minus_constraint = _constraint(minus_exp, 'BG1-BG2=0')
+    assert plus_constraint.coefficients == {'BG1': 1.0, 'BG2': 1.0}
+    assert minus_constraint.coefficients == {'BG1': 1.0, 'BG2': -1.0}
+
+    assert plus_exp.metadata.bias_start_V == BIAS_POSITIVE_8
+    assert plus_exp.metadata.bias_stop_V == BIAS_NEGATIVE_8
+    assert minus_exp.metadata.bias_start_V == BIAS_NEGATIVE_8
+    assert minus_exp.metadata.bias_stop_V == BIAS_POSITIVE_8
+
+
+def test_plus_minus_trajectories_group_all_roles(tmp_path):
+    plus = 'YZ356_BG1+BG2=0_Vb+8to-8'
+    minus = 'YZ356_BG1-BG2=0_Vb-8to+8'
+    for stem in (plus, minus):
+        _write(tmp_path / 'Initial Data' / f'{stem}.csv')
+        _write(tmp_path / 'Initial Data after process' / f'{stem}.csv')
+        _write(tmp_path / 'Processed Data' / f'{stem}.csv')
+        _write(tmp_path / 'Processed Data' / f'{stem}.png')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == TWO_EXPERIMENTS
+    for exp in result.experiments:
+        assert len(exp.raw_files) == 1
+        assert len(exp.intermediate_files) == 1
+        assert len(exp.processed_files) == 1
+        assert len(exp.figure_files) == 1
+
+
+def test_rev_sweep_is_a_separate_proposal(tmp_path):
+    forward = 'YZ356_TG+BG=0'
+    reverse = 'YZ356_TG+BG=0Rev'
+    _write(tmp_path / 'Initial Data' / f'{forward}.csv')
+    _write(tmp_path / 'Initial Data' / f'{reverse}.csv')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == TWO_EXPERIMENTS
+
+
+def test_rev_sweep_roles_still_group(tmp_path):
+    base = 'YZ356_TG+BG=0Rev'
+    _write(tmp_path / 'Initial Data' / f'{base}.csv')
+    _write(tmp_path / 'Processed Data' / f'{base}.csv')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == 1
+    exp = result.experiments[0]
+    assert exp.raw_files == [f'Initial Data/{base}.csv']
+    assert exp.processed_files == [f'Processed Data/{base}.csv']
+
+
+def test_tg_eq_bg_eq_0_grouping_remains_valid(tmp_path):
+    base = 'YZ356_TG=BG=0'
+    _write(tmp_path / 'Initial Data' / f'{base}.csv')
+    _write(tmp_path / 'Processed Data' / f'{base}.csv')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == 1
+    exp = result.experiments[0]
+    assert exp.metadata.fixed_gate_values == {'TG': 0.0, 'BG': 0.0}
+    assert exp.raw_files == [f'Initial Data/{base}.csv']
+    assert exp.processed_files == [f'Processed Data/{base}.csv']
+
+
+def test_pl_and_absorption_roles_still_group(tmp_path):
+    _write(tmp_path / 'Initial Data' / 'D356_PL.csv')
+    _write(tmp_path / 'Processed Data' / 'D356_PL.png')
+    _write(tmp_path / 'Initial Data' / 'YZ356_REF.csv')
+    _write(tmp_path / 'Processed Data' / 'YZ356_REF.png')
+
+    result = scan_directory(tmp_path)
+
+    assert len(result.experiments) == TWO_EXPERIMENTS
+    by_type = {exp.metadata.measurement_type: exp for exp in result.experiments}
+    pl = by_type['photoluminescence']
+    absorption = by_type['absorption']
+    assert pl.raw_files == ['Initial Data/D356_PL.csv']
+    assert pl.figure_files == ['Processed Data/D356_PL.png']
+    assert absorption.raw_files == ['Initial Data/YZ356_REF.csv']
+    assert absorption.figure_files == ['Processed Data/YZ356_REF.png']
