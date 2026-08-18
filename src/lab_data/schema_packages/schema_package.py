@@ -16,6 +16,64 @@ class GateValue(MSection):
     voltage = Quantity(type=float, unit='V')
 
 
+class GateTerm(MSection):
+    m_def = Section(label='Gate Term')
+
+    node = Quantity(type=str)
+    coefficient = Quantity(type=float)
+
+
+class GateConstraint(MSection):
+    m_def = Section(label='Gate Constraint')
+
+    raw_expression = Quantity(type=str)
+    control_mode = Quantity(type=str)
+    constant = Quantity(type=float)
+    terms = SubSection(sub_section=GateTerm.m_def, repeats=True)
+
+
+class ElectricalConnection(MSection):
+    m_def = Section(label='Electrical Connection')
+
+    nodes = Quantity(type=str, shape=['*'])
+    type = Quantity(type=str)
+    source_role = Quantity(type=str)
+    raw_expression = Quantity(type=str)
+
+
+class ExperimentFile(MSection):
+    m_def = Section(label='Experiment File')
+
+    path = Quantity(type=str)
+    role = Quantity(type=MEnum('raw', 'intermediate', 'processed', 'figure'))
+
+
+class MetadataProvenance(MSection):
+    m_def = Section(label='Metadata Provenance')
+
+    field = Quantity(type=str)
+    value = Quantity(type=str)
+    source_type = Quantity(type=str)
+    source = Quantity(type=str)
+    method = Quantity(type=str)
+
+
+class LineageEdge(MSection):
+    m_def = Section(label='Lineage Edge')
+
+    source = Quantity(type=str)
+    target = Quantity(type=str)
+    relation = Quantity(type=str)
+
+
+class IngestionReview(MSection):
+    m_def = Section(label='Ingestion Review')
+
+    warnings = Quantity(type=str, shape=['*'])
+    confidence = Quantity(type=float)
+    needs_review = Quantity(type=bool)
+
+
 class OpticalExperiment(EntryData):
     """
     Basic metadata for an optical spectroscopy experiment.
@@ -170,7 +228,43 @@ class OpticalExperiment(EntryData):
         ),
     )
 
+    measurement_point_label = Quantity(type=str)
+
+    center_wavelength = Quantity(type=float, unit='nm')
+
+    integration_time = Quantity(type=float, unit='s')
+
+    averages = Quantity(type=int)
+
+    rotations = Quantity(type=float, unit='degree', shape=['*'])
+
+    stage_position = Quantity(type=float)
+
+    fixed_top_gate = Quantity(type=float, unit='V')
+
+    active_gate_configuration = Quantity(type=str)
+
+    sweep_direction = Quantity(type=str)
+
+    bias_start = Quantity(type=float, unit='V')
+
+    bias_stop = Quantity(type=float, unit='V')
+
+    back_gate_topology = Quantity(type=str)
+
     fixed_gate_values = SubSection(sub_section=GateValue.m_def, repeats=True)
+
+    gate_constraints = SubSection(sub_section=GateConstraint.m_def, repeats=True)
+
+    electrical_connections = SubSection(sub_section=ElectricalConnection.m_def, repeats=True)
+
+    files = SubSection(sub_section=ExperimentFile.m_def, repeats=True)
+
+    metadata_provenance = SubSection(sub_section=MetadataProvenance.m_def, repeats=True)
+
+    lineage = SubSection(sub_section=LineageEdge.m_def, repeats=True)
+
+    ingestion_review = SubSection(sub_section=IngestionReview.m_def)
 
 
 m_package.__init_metainfo__()
