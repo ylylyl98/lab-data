@@ -4,9 +4,16 @@ from nomad.datamodel.metainfo.annotations import (
     ELNAnnotation,
     ELNComponentEnum,
 )
-from nomad.metainfo import MEnum, Quantity, SchemaPackage, Section
+from nomad.metainfo import MEnum, MSection, Quantity, SchemaPackage, Section, SubSection
 
 m_package = SchemaPackage()
+
+
+class GateValue(MSection):
+    m_def = Section(label='Gate Value')
+
+    gate = Quantity(type=str)
+    voltage = Quantity(type=float, unit='V')
 
 
 class OpticalExperiment(EntryData):
@@ -162,6 +169,8 @@ class OpticalExperiment(EntryData):
             component=ELNComponentEnum.RichTextEditQuantity
         ),
     )
+
+    fixed_gate_values = SubSection(sub_section=GateValue.m_def, repeats=True)
 
 
 m_package.__init_metainfo__()
