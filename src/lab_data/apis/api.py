@@ -8,10 +8,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from nomad.config import config
 from pydantic import BaseModel, ConfigDict
 
+from lab_data.artifact_previews import read_artifact_preview_asset
 from lab_data.catalog_retrieval import (
     find_device_documents,
     find_device_experiments,
@@ -179,6 +180,21 @@ def create_app(
                 )
             except ValueError as error:
                 raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get('/artifacts/{artifact_id}/preview/assets/{asset_path:path}')
+    def artifact_preview_asset(artifact_id: str, asset_path: str) -> Response:
+        if preview_root is None:
+            raise HTTPException(
+                status_code=503, detail='preview cache is not configured'
+            )
+        with _read_only_catalog(catalog_path) as store:
+            result = read_artifact_preview_asset(
+                store, artifact_id, asset_path, preview_root=preview_root
+            )
+        if result is None:
+            raise HTTPException(status_code=404, detail='preview asset not found')
+        data, media_type = result
+        return Response(content=data, media_type=media_type)
 
     return app
 

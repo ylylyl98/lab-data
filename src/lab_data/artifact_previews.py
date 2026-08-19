@@ -33,6 +33,7 @@ __all__ = [
     'build_artifact_preview',
     'build_artifact_preview_report',
     'discover_artifact_preview',
+    'read_artifact_preview_asset',
     'search_artifact_previews',
 ]
 
@@ -868,3 +869,78 @@ def build_artifact_preview_report(  # noqa: PLR0913
         }
         for item in previews
     )
+
+
+def read_artifact_preview_asset(
+    store: CatalogStore,
+    artifact_id: str,
+    asset_path: str,
+    *,
+    preview_root: Path,
+) -> tuple[bytes, str] | None:
+    """Return validated bytes and media type for one preview asset.
+
+    The requested ``asset_path`` must match an entry in the preview manifest
+    exactly.  Only that one asset is validated and read, so serving a single
+    asset does not re-hash the entire object.  Arbitrary filesystem paths are
+    never resolved directly.
+    """
+
+    preview_root = Path(preview_root)
+    if not preview_root.is_absolute() or _has_symlink_component(preview_root):
+        return None
+    artifact = store.get_artifact(artifact_id)
+    if artifact is None:
+        return None
+    preview_id = _preview_id(artifact)
+    object_dir = preview_root / 'v1' / 'objects' / preview_id[:2] / preview_id
+    if _has_symlink_component(object_dir):
+        return None
+    manifest = _read_manifest(object_dir)
+    if manifest is None:
+        return None
+    if (
+        manifest.get('generator') != GENERATOR_VERSION
+        or manifest.get('schema_version') != SCHEMA_VERSION
+        or manifest.get('policy_version') != POLICY_VERSION
+        or manifest.get('preview_id') != preview_id
+        or manifest.get('artifact_id') != artifact_id
+    ):
+        return None
+    raw_assets = manifest.get('assets')
+    if not isinstance(raw_assets, (list, tuple)):
+        return None
+    for item in raw_assets:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get('path') != asset_path:
+            continue
+        try:
+            asset = ArtifactPreviewAsset(**item)
+        except (TypeError, ValueError):
+            return None
+        if (
+            Path(asset.path).is_absolute()
+            or '..' in Path(asset.path).parts
+            or _has_symlink_component(object_dir / asset.path)
+        ):
+            return None
+        candidate = (object_dir / asset.path).resolve()
+        try:
+            candidate.relative_to(object_dir.resolve())
+        except ValueError:
+            return None
+        try:
+            if (
+                not candidate.is_file()
+                or _asset_from_file(
+                    candidate, asset.kind, asset.media_type, asset.path
+                )
+                != asset
+            ):
+                return None
+            data = candidate.read_bytes()
+        except OSError:
+            return None
+        return data, asset.media_type
+    return None
