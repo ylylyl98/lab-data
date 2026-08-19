@@ -1,0 +1,55 @@
+{
+  "final_name_present": false,
+  "http_status": 200,
+  "total_uploads": 6,
+  "uploads": [
+    {
+      "entries": 3,
+      "process_running": false,
+      "process_status": "SUCCESS",
+      "published": false,
+      "upload_id": "x5CIh7NqQ-CullEjfOeMjQ",
+      "upload_name": null
+    },
+    {
+      "entries": 1,
+      "process_running": false,
+      "process_status": "SUCCESS",
+      "published": false,
+      "upload_id": "-uelEjLdTzC1_JkFUNSAAQ",
+      "upload_name": "D356_PL.archive.json"
+    },
+    {
+      "entries": 8,
+      "process_running": false,
+      "process_status": "SUCCESS",
+      "published": false,
+      "upload_id": "WvdaSLfuTp6TKYk_J_KKqA",
+      "upload_name": "D356_04_standard_pl.archive.json"
+    },
+    {
+      "entries": 1,
+      "process_running": false,
+      "process_status": "SUCCESS",
+      "published": false,
+      "upload_id": "QOwIqtD5T7y1GdpetWQIoQ",
+      "upload_name": "D356_04_standard_pl.archive.json"
+    },
+    {
+      "entries": 1,
+      "process_running": false,
+      "process_status": "SUCCESS",
+      "published": false,
+      "upload_id": "83PW6_zVSzi2yP1N3JYXHg",
+      "upload_name": "D356_04_standard_pl.archive.json"
+    },
+    {
+      "entries": 3,
+      "process_running": false,
+      "process_status": "SUCCESS",
+      "published": false,
+      "upload_id": "navVbz8CR0WdSf0OibzTFw",
+      "upload_name": null
+    }
+  ]
+}

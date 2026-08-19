@@ -1,0 +1,34 @@
+{
+  "archive_files": [
+    {
+      "destination_path": "YZ247-0001.archive.json",
+      "role": "archive",
+      "source_path": "C:\\a\\YZ247-0001.archive.json"
+    },
+    {
+      "destination_path": "YZ247-0002.archive.json",
+      "role": "archive",
+      "source_path": "C:\\a\\YZ247-0002.archive.json"
+    }
+  ],
+  "batch_id": "YZ247-batch-001-585014b160e9",
+  "batch_number": 1,
+  "companion_files": [],
+  "created_utc": "2026-08-18T00:00:00Z",
+  "dataset_label": "YZ247",
+  "entry_ids": [],
+  "expected_entry_count": 2,
+  "expected_file_count": 2,
+  "manifest_version": 1,
+  "processing_status": null,
+  "proposal_ids": [
+    "YZ247-0001",
+    "YZ247-0002"
+  ],
+  "publish": false,
+  "status": "preflight_passed",
+  "updated_utc": "2026-08-18T00:00:00Z",
+  "upload_id": null,
+  "upload_name": "lab-data-YZ247-phase9-batch-001",
+  "verification_status": null
+}

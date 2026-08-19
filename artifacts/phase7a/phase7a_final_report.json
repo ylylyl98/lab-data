@@ -1,0 +1,42 @@
+{
+  "entries_list_projection_omissions": {
+    "fixed_gate_values_in_projection": [
+      {
+        "gate": "BG",
+        "voltage": 0.0
+      },
+      {
+        "gate": "TG",
+        "voltage": 0.0
+      }
+    ],
+    "fixed_has_rotations_field": false,
+    "review_in_projection": {
+      "confidence": 0.8,
+      "needs_review": false
+    },
+    "wiring_electrical_connections": [
+      {
+        "raw_expression": "BG2-CG",
+        "source_role": "bias_source",
+        "type": "electrically_tied"
+      }
+    ],
+    "wiring_has_nodes_field": false
+  },
+  "final_named_upload_count": 1,
+  "final_upload_ids": [
+    "wI30Hr2JSGK4efs9EITX4w"
+  ],
+  "new_upload": {
+    "entries": 3,
+    "process_running": false,
+    "process_status": "SUCCESS",
+    "published": false,
+    "upload_id": "wI30Hr2JSGK4efs9EITX4w",
+    "upload_name": "lab-data-metadata-only-pilot-3-final"
+  },
+  "post_create_http_status": 200,
+  "post_create_total_uploads": 7,
+  "prior_upload_ids_preserved": true
+}

@@ -1,0 +1,16 @@
+{
+  "created": true,
+  "errors": [],
+  "manifest_processing_status": null,
+  "manifest_status": "upload_created",
+  "manifest_upload_id": "wI30Hr2JSGK4efs9EITX4w",
+  "state": "upload_created",
+  "upload_result": {
+    "dry_run": false,
+    "entry_id": "5ZdVmNE3R-eSqO1rojxCIpf-jQJV",
+    "processing_status": null,
+    "published": false,
+    "upload_id": "wI30Hr2JSGK4efs9EITX4w"
+  },
+  "warnings": []
+}

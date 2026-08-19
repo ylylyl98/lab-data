@@ -7,6 +7,12 @@ JSON-compatible serialization. It wraps an
 as the archive ``data`` section and round-trips it through NOMAD's metainfo
 serializer (``m_to_dict``). No files are written, no workflow or unrelated
 fields are added, and nested structures are preserved for Pass S2.
+
+Variable-length quantities declared with ``shape=['*']`` (for example
+``OpticalExperiment.rotations`` and ``ElectricalConnection.nodes``) serialize
+as JSON arrays in the full archive. This local/full-archive path preserves
+them losslessly even though NOMAD's search-index and entries-list projection
+may omit such quantities.
 """
 
 from __future__ import annotations

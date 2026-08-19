@@ -1,0 +1,8 @@
+{
+  "data": {
+    "m_def": "lab_data.schema_packages.schema_package.OpticalExperiment",
+    "measurement_type": "photoluminescence",
+    "sample_id": "S3",
+    "temperature": 3.6
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "catalog": "C:\\CodexRepos\\lab-data\\.bench-test\\catalog.db",
+  "combined_seconds": 0.004861599998548627,
+  "operations": {
+    "find_device_documents": {
+      "result_count": 0,
+      "result_present": true,
+      "seconds": 0.00037239998346194625
+    },
+    "find_device_experiments": {
+      "result_count": 0,
+      "result_present": true,
+      "seconds": 0.0007761000015307218
+    },
+    "get_artifact_preview": {
+      "result_count": 0,
+      "result_present": false,
+      "seconds": 0.0020411000004969537
+    },
+    "search_artifacts": {
+      "result_count": 1,
+      "result_present": true,
+      "seconds": 0.0003601000062189996
+    },
+    "search_devices": {
+      "result_count": 1,
+      "result_present": true,
+      "seconds": 0.0004971000016666949
+    },
+    "search_experiments": {
+      "result_count": 0,
+      "result_present": true,
+      "seconds": 0.0007833999989088625
+    }
+  },
+  "preview_root": "C:\\CodexRepos\\lab-data\\.bench-test",
+  "workload": {
+    "artifact_id": "a",
+    "device_id": "D356",
+    "sample_id": "YZ247"
+  }
+}

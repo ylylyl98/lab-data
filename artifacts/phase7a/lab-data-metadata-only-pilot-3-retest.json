@@ -1,0 +1,40 @@
+{
+  "archive_files": [
+    {
+      "destination_path": "D356_04_standard_pl.archive.json",
+      "role": "archive",
+      "source_path": "C:\\NOMAD_Test_Output\\pilot\\D356_04_standard_pl.archive.json"
+    },
+    {
+      "destination_path": "D356_06_wiring.archive.json",
+      "role": "archive",
+      "source_path": "C:\\NOMAD_Test_Output\\pilot\\D356_06_wiring.archive.json"
+    },
+    {
+      "destination_path": "YZ247_432_fixed_gate.archive.json",
+      "role": "archive",
+      "source_path": "C:\\NOMAD_Test_Output\\pilot\\YZ247_432_fixed_gate.archive.json"
+    }
+  ],
+  "batch_id": "lab-data-metadata-only-pilot-3-retest",
+  "batch_number": 1,
+  "companion_files": [],
+  "created_utc": "2026-08-18T10:27:03.108743Z",
+  "dataset_label": "lab-data-metadata-only-pilot-3-retest",
+  "entry_ids": [],
+  "expected_entry_count": 3,
+  "expected_file_count": 3,
+  "manifest_version": 1,
+  "processing_status": null,
+  "proposal_ids": [
+    "D356_04_standard_pl",
+    "D356_06_wiring",
+    "YZ247_432_fixed_gate"
+  ],
+  "publish": false,
+  "status": "preflight_passed",
+  "updated_utc": "2026-08-18T10:27:03.108743Z",
+  "upload_id": null,
+  "upload_name": "lab-data-metadata-only-pilot-3-retest",
+  "verification_status": null
+}

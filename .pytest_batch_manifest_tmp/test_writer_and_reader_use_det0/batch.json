@@ -1,0 +1,35 @@
+{
+  "archive_files": [
+    {
+      "destination_path": "Initial Data/file.csv",
+      "role": "raw",
+      "source_path": "C:\\NOMAD_Test\\YZ247\\Initial Data\\file.csv"
+    }
+  ],
+  "batch_id": "YZ247-batch-001-ccee25576bd5",
+  "batch_number": 1,
+  "companion_files": [
+    {
+      "destination_path": "Processed Data/file.dat",
+      "role": "processed",
+      "source_path": "C:\\NOMAD_Test\\YZ247\\Processed Data\\file.dat"
+    }
+  ],
+  "created_utc": "2026-01-01T00:00:00Z",
+  "dataset_label": "YZ247",
+  "entry_ids": [],
+  "expected_entry_count": 2,
+  "expected_file_count": 2,
+  "manifest_version": 1,
+  "processing_status": null,
+  "proposal_ids": [
+    "proposal-003",
+    "proposal-001"
+  ],
+  "publish": false,
+  "status": "planned",
+  "updated_utc": "2026-01-01T00:01:00Z",
+  "upload_id": null,
+  "upload_name": "yz247-batch-001",
+  "verification_status": null
+}

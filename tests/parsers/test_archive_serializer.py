@@ -190,6 +190,61 @@ def test_nested_sections_and_units_serialize_losslessly():
     assert experiment.temperature.magnitude == 3.6  # noqa: PLR2004
 
 
+def test_electrical_connection_nodes_serialize_as_exact_json_array():
+    experiment = _experiment(
+        sample_id='D356',
+        electrical_connections=[
+            ElectricalConnection(
+                nodes=['BG2', 'CG'],
+                type='electrically_tied',
+                source_role='bias_source',
+                raw_expression='BG2-CG',
+            )
+        ],
+    )
+
+    serialized = serialize_entry_archive(build_entry_archive(experiment))
+
+    assert serialized['data']['electrical_connections'][0]['nodes'] == [
+        'BG2',
+        'CG',
+    ]
+
+
+def test_rotations_serialize_as_exact_json_array():
+    experiment = _experiment(
+        sample_id='D356',
+        rotations=[1195.8, 2145.0],
+    )
+
+    serialized = serialize_entry_archive(build_entry_archive(experiment))
+
+    assert serialized['data']['rotations'] == [1195.8, 2145.0]
+
+
+def test_written_archive_preserves_variable_length_arrays(tmp_path):
+    experiment = _experiment(
+        sample_id='D356',
+        rotations=[1195.8, 2145.0],
+        electrical_connections=[
+            ElectricalConnection(
+                nodes=['BG2', 'CG'],
+                type='electrically_tied',
+                source_role='bias_source',
+                raw_expression='BG2-CG',
+            )
+        ],
+    )
+    output_path = tmp_path / 'archive.json'
+
+    write_entry_archive_json(build_entry_archive(experiment), output_path)
+
+    with output_path.open(encoding='utf-8') as handle:
+        payload = json.loads(handle.read())
+    assert payload['data']['rotations'] == [1195.8, 2145.0]
+    assert payload['data']['electrical_connections'][0]['nodes'] == ['BG2', 'CG']
+
+
 def test_write_entry_archive_json_writes_and_reads_back(tmp_path):
     experiment = _experiment(
         sample_id='S3',

@@ -14,6 +14,8 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from lab_data.storage import StorageRoot
+
 __all__ = [
     'ExperimentMetadata',
     'ExperimentProposal',
@@ -23,6 +25,7 @@ __all__ = [
     'ScanResult',
     'main',
     'scan_directory',
+    'scan_relative_files',
 ]
 
 SUPPORTED_EXTENSIONS = frozenset({'.csv', '.dat', '.xlsx', '.xls', '.png'})
@@ -849,22 +852,15 @@ def _classify_role(parent_dirs: set[str], extension: str) -> str | None:
     return None
 
 
-def scan_directory(root: str | Path) -> ScanResult:
-    """Recursively scan ``root`` and return a structured :class:`ScanResult`."""
-
-    root_path = Path(root)
-    if not root_path.exists():
-        raise FileNotFoundError(f'path does not exist: {root_path}')
-    if not root_path.is_dir():
-        raise NotADirectoryError(f'path is not a directory: {root_path}')
+def _scan_paths(root_path: Path, file_paths: list[Path]) -> ScanResult:
+    """Classify and group an ordered list of absolute files under ``root_path``."""
 
     warnings: list[str] = []
     unclassified: list[str] = []
     groups: dict[str, dict[str, list[str]]] = {}
     stems_by_key: dict[str, set[str]] = {}
 
-    files = [path for path in root_path.rglob('*') if path.is_file()]
-    for file_path in sorted(files, key=lambda path: path.as_posix()):
+    for file_path in sorted(file_paths, key=lambda path: path.as_posix()):
         rel_path = file_path.relative_to(root_path)
         relative = rel_path.as_posix()
         extension = file_path.suffix.lower()
@@ -934,6 +930,55 @@ def scan_directory(root: str | Path) -> ScanResult:
         unclassified_files=unclassified,
         warnings=warnings,
     )
+
+
+def scan_directory(root: str | Path) -> ScanResult:
+    """Recursively scan ``root`` and return a structured :class:`ScanResult`."""
+
+    root_path = Path(root)
+    if not root_path.exists():
+        raise FileNotFoundError(f'path does not exist: {root_path}')
+    if not root_path.is_dir():
+        raise NotADirectoryError(f'path is not a directory: {root_path}')
+
+    files = [path for path in root_path.rglob('*') if path.is_file()]
+    return _scan_paths(root_path, files)
+
+
+def scan_relative_files(
+    root: str | Path, relative_paths: list[str] | tuple[str, ...]
+) -> ScanResult:
+    """Scan a supplied subset of files relative to ``root``.
+
+    Only the supplied regular files participate in directory-role
+    classification and filename-stem grouping. Relative paths are validated
+    with :class:`lab_data.storage.StorageRoot` so absolute, drive-letter, UNC,
+    and parent-reference paths are rejected. Files must exist under ``root``.
+    """
+
+    root_path = Path(root)
+    if not root_path.exists():
+        raise FileNotFoundError(f'path does not exist: {root_path}')
+    if not root_path.is_dir():
+        raise NotADirectoryError(f'path is not a directory: {root_path}')
+
+    storage = StorageRoot(root_path)
+    resolved: list[Path] = []
+    seen: set[str] = set()
+    for relative in relative_paths:
+        if not isinstance(relative, str):
+            raise TypeError('relative_paths must contain only strings')
+        path = storage.resolve(relative)
+        if not path.exists():
+            raise FileNotFoundError(f'supplied file does not exist: {relative}')
+        if not path.is_file():
+            raise ValueError(f'supplied path is not a regular file: {relative}')
+        canonical = storage.canonicalize(path)
+        if canonical not in seen:
+            seen.add(canonical)
+            resolved.append(path)
+
+    return _scan_paths(root_path, resolved)
 
 
 def main(argv: list[str] | None = None) -> int:

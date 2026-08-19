@@ -1,0 +1,16 @@
+{
+  "data": {
+    "m_def": "lab_data.schema_packages.schema_package.OpticalExperiment",
+    "measurement_type": "photoluminescence",
+    "metadata_provenance": [
+      {
+        "field": "temperature_K",
+        "method": "deterministic",
+        "source": "raw/a.csv",
+        "source_type": "filename",
+        "value": "3.6"
+      }
+    ],
+    "sample_id": "S3"
+  }
+}

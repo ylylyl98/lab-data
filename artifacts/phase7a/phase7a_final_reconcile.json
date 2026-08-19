@@ -1,0 +1,54 @@
+{
+  "entries_detail": [
+    {
+      "entry_id": "5ZdVmNE3R-eSqO1rojxCIpf-jQJV",
+      "mainfile": "D356_04_standard_pl.archive.json",
+      "parser_name": "parsers/archive",
+      "process_status": "SUCCESS"
+    },
+    {
+      "entry_id": "vBFuQoxEYGdMFKKkfl4UUY1q8Q2B",
+      "mainfile": "D356_06_wiring.archive.json",
+      "parser_name": "parsers/archive",
+      "process_status": "SUCCESS"
+    },
+    {
+      "entry_id": "SOg_IQ_LtVaDhDHcTduDEKuGJLm_",
+      "mainfile": "YZ247_432_fixed_gate.archive.json",
+      "parser_name": "parsers/archive",
+      "process_status": "SUCCESS"
+    }
+  ],
+  "entries_pagination_total": 3,
+  "reconciled_remote": {
+    "entry_ids": [
+      [
+        "D356_04_standard_pl",
+        "5ZdVmNE3R-eSqO1rojxCIpf-jQJV"
+      ],
+      [
+        "D356_06_wiring",
+        "vBFuQoxEYGdMFKKkfl4UUY1q8Q2B"
+      ],
+      [
+        "YZ247_432_fixed_gate",
+        "SOg_IQ_LtVaDhDHcTduDEKuGJLm_"
+      ]
+    ],
+    "errors": [],
+    "not_found": false,
+    "process_running": false,
+    "process_status": "SUCCESS",
+    "published": false,
+    "warnings": []
+  },
+  "upload_detail": {
+    "entries": 3,
+    "process_running": false,
+    "process_status": "SUCCESS",
+    "published": false,
+    "upload_id": "wI30Hr2JSGK4efs9EITX4w",
+    "upload_name": "lab-data-metadata-only-pilot-3-final"
+  },
+  "upload_id": "wI30Hr2JSGK4efs9EITX4w"
+}

@@ -1,0 +1,76 @@
+{
+  "archive_files": [
+    {
+      "destination_path": "D356_04_standard_pl.archive.json",
+      "role": "archive",
+      "source_path": "C:\\NOMAD_Test_Output\\pilot\\D356_04_standard_pl.archive.json"
+    },
+    {
+      "destination_path": "D356_06_wiring.archive.json",
+      "role": "archive",
+      "source_path": "C:\\NOMAD_Test_Output\\pilot\\D356_06_wiring.archive.json"
+    },
+    {
+      "destination_path": "YZ247_432_fixed_gate.archive.json",
+      "role": "archive",
+      "source_path": "C:\\NOMAD_Test_Output\\pilot\\YZ247_432_fixed_gate.archive.json"
+    }
+  ],
+  "batch_id": "metadata-only-pilot-batch-001-134534bfd125",
+  "batch_number": 1,
+  "companion_files": [
+    {
+      "relative_path": "Initial Data/YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20.csv",
+      "role": "raw",
+      "source_path": "C:\\NOMAD_Test\\D356\\Initial Data\\YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20.csv"
+    },
+    {
+      "relative_path": "Processed Data/YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20_PL.dat",
+      "role": "processed",
+      "source_path": "C:\\NOMAD_Test\\D356\\Processed Data\\YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20_PL.dat"
+    },
+    {
+      "relative_path": "Processed Data/YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20_PL_linear.png",
+      "role": "figure",
+      "source_path": "C:\\NOMAD_Test\\D356\\Processed Data\\YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20_PL_linear.png"
+    },
+    {
+      "relative_path": "Processed Data/YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20_PL_log.png",
+      "role": "figure",
+      "source_path": "C:\\NOMAD_Test\\D356\\Processed Data\\YZ356_9Tp1n1_3.6KPL_633nm_700nmc_2sx1_FixTG=-0.2_Vb0to+20_PL_log.png"
+    },
+    {
+      "relative_path": "Initial Data/YZ356_pa1_9T_BG2-CG_3.6KREF_720nmc_0p07sx10_BG1only.csv",
+      "role": "raw",
+      "source_path": "C:\\NOMAD_Test\\D356\\Initial Data\\YZ356_pa1_9T_BG2-CG_3.6KREF_720nmc_0p07sx10_BG1only.csv"
+    },
+    {
+      "relative_path": "Initial Data/YZ247_pX2_3.6KPL_730nm0.01uW_865nmc_5sx1_Rot1195p8deg_Rot2145deg_Stage47_TG=BG=0.csv",
+      "role": "raw",
+      "source_path": "C:\\NOMAD_Test\\YZ247\\Initial Data\\YZ247_pX2_3.6KPL_730nm0.01uW_865nmc_5sx1_Rot1195p8deg_Rot2145deg_Stage47_TG=BG=0.csv"
+    },
+    {
+      "relative_path": "Initial data after processing/YZ247_pX2_3.6KPL_730nm0.01uW_865nmc_5sx1_Rot1195p8deg_Rot2145deg_Stage47_TG=BG=0.csv",
+      "role": "intermediate",
+      "source_path": "C:\\NOMAD_Test\\YZ247\\Initial data after processing\\YZ247_pX2_3.6KPL_730nm0.01uW_865nmc_5sx1_Rot1195p8deg_Rot2145deg_Stage47_TG=BG=0.csv"
+    }
+  ],
+  "created_utc": "2026-08-18T07:39:58.558270Z",
+  "dataset_label": "metadata-only-pilot",
+  "entry_ids": [],
+  "expected_entry_count": 3,
+  "expected_file_count": 10,
+  "manifest_version": 1,
+  "processing_status": null,
+  "proposal_ids": [
+    "D356_04_standard_pl",
+    "D356_06_wiring",
+    "YZ247_432_fixed_gate"
+  ],
+  "publish": false,
+  "status": "planned",
+  "updated_utc": "2026-08-18T07:39:58.558270Z",
+  "upload_id": null,
+  "upload_name": "lab-data-metadata-only-pilot-3",
+  "verification_status": null
+}

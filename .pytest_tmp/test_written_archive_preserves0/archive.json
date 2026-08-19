@@ -1,0 +1,21 @@
+{
+  "data": {
+    "electrical_connections": [
+      {
+        "nodes": [
+          "BG2",
+          "CG"
+        ],
+        "raw_expression": "BG2-CG",
+        "source_role": "bias_source",
+        "type": "electrically_tied"
+      }
+    ],
+    "m_def": "lab_data.schema_packages.schema_package.OpticalExperiment",
+    "rotations": [
+      1195.8,
+      2145.0
+    ],
+    "sample_id": "D356"
+  }
+}
