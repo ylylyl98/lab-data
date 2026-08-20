@@ -1,8 +1,29 @@
-import type { Artifact, Device, Experiment, Preview } from './types';
+import type {
+  Artifact,
+  ArtifactKind,
+  Device,
+  Experiment,
+  ExperimentFilterParams,
+  ListParams,
+  Page,
+  Preview,
+  Summary,
+} from './types';
 
-function buildQuery(params: Record<string, string>): string {
-  const query = new URLSearchParams(params).toString();
-  return query ? `?${query}` : '';
+const DEFAULT_PAGE_SIZE = 50;
+
+type QueryValue = string | number | undefined;
+
+function buildQuery(params: Record<string, QueryValue>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '' || Number.isNaN(value)) {
+      continue;
+    }
+    query.set(key, String(value));
+  }
+  const text = query.toString();
+  return text ? `?${text}` : '';
 }
 
 async function request<T>(path: string): Promise<T> {
@@ -13,64 +34,144 @@ async function request<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function listDevices(): Promise<Device[]> {
-  return request<Device[]>('/devices');
+export function listDevices(
+  params: ListParams & { device_id?: string } = {},
+): Promise<Page<Device>> {
+  return request<Page<Device>>(
+    `/devices${buildQuery({
+      q: params.q,
+      limit: params.limit ?? DEFAULT_PAGE_SIZE,
+      offset: params.offset,
+      device_id: params.device_id,
+    })}`,
+  );
 }
 
-export function searchDevices(deviceId: string): Promise<Device[]> {
-  return request<Device[]>(`/devices${buildQuery({ device_id: deviceId })}`);
+export function listExperiments(
+  params: ListParams & { experiment_id?: string } & ExperimentFilterParams = {},
+): Promise<Page<Experiment>> {
+  return request<Page<Experiment>>(
+    `/experiments${buildQuery({
+      q: params.q,
+      limit: params.limit ?? DEFAULT_PAGE_SIZE,
+      offset: params.offset,
+      experiment_id: params.experiment_id,
+      measurement_type: params.measurement_type,
+      temperature_K: params.temperature_K,
+      magnetic_field_T: params.magnetic_field_T,
+      measurement_point_label: params.measurement_point_label,
+      excitation_wavelength_nm: params.excitation_wavelength_nm,
+    })}`,
+  );
+}
+
+export function listArtifacts(
+  params: ListParams & {
+    artifact_id?: string;
+    device_id?: string;
+    experiment_id?: string;
+    kind?: ArtifactKind;
+  } = {},
+): Promise<Page<Artifact>> {
+  return request<Page<Artifact>>(
+    `/artifacts${buildQuery({
+      q: params.q,
+      limit: params.limit ?? DEFAULT_PAGE_SIZE,
+      offset: params.offset,
+      artifact_id: params.artifact_id,
+      device_id: params.device_id,
+      experiment_id: params.experiment_id,
+      kind: params.kind,
+    })}`,
+  );
+}
+
+export function getSummary(): Promise<Summary> {
+  return request<Summary>('/summary');
+}
+
+export function searchDevices(
+  q: string,
+  params: ListParams = {},
+): Promise<Page<Device>> {
+  return listDevices({ q, ...params });
+}
+
+export function searchExperiments(
+  q: string,
+  params: ListParams & ExperimentFilterParams = {},
+): Promise<Page<Experiment>> {
+  return listExperiments({ q, ...params });
+}
+
+export function searchArtifacts(
+  q: string,
+  params: ListParams = {},
+): Promise<Page<Artifact>> {
+  return listArtifacts({ q, ...params });
 }
 
 export function getDevice(deviceId: string): Promise<Device | undefined> {
-  return searchDevices(deviceId).then((items) => items[0]);
-}
-
-export function listExperiments(): Promise<Experiment[]> {
-  return request<Experiment[]>('/experiments');
-}
-
-export function searchExperiments(experimentId: string): Promise<Experiment[]> {
-  return request<Experiment[]>(
-    `/experiments${buildQuery({ experiment_id: experimentId })}`,
-  );
+  return listDevices({ device_id: deviceId }).then((page) => page.items[0]);
 }
 
 export function getExperiment(
   experimentId: string,
 ): Promise<Experiment | undefined> {
-  return searchExperiments(experimentId).then((items) => items[0]);
-}
-
-export function listArtifacts(): Promise<Artifact[]> {
-  return request<Artifact[]>('/artifacts');
-}
-
-export function searchArtifacts(artifactId: string): Promise<Artifact[]> {
-  return request<Artifact[]>(`/artifacts${buildQuery({ artifact_id: artifactId })}`);
+  return listExperiments({ experiment_id: experimentId }).then(
+    (page) => page.items[0],
+  );
 }
 
 export function getArtifact(artifactId: string): Promise<Artifact | undefined> {
-  return searchArtifacts(artifactId).then((items) => items[0]);
+  return listArtifacts({ artifact_id: artifactId }).then(
+    (page) => page.items[0],
+  );
 }
 
-export function getDeviceArtifacts(deviceId: string): Promise<Artifact[]> {
-  return request<Artifact[]>(`/artifacts${buildQuery({ device_id: deviceId })}`);
+export function getDeviceArtifacts(
+  deviceId: string,
+  params: {
+    kind?: ArtifactKind;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<Page<Artifact>> {
+  return listArtifacts({ device_id: deviceId, ...params });
 }
 
-export function getDeviceDocuments(deviceId: string): Promise<Artifact[]> {
-  return request<Artifact[]>(`/devices/${deviceId}/documents`);
+export function getDeviceDocuments(
+  deviceId: string,
+  params: { q?: string; limit?: number; offset?: number } = {},
+): Promise<Page<Artifact>> {
+  return request<Page<Artifact>>(
+    `/devices/${deviceId}/documents${buildQuery({
+      q: params.q,
+      limit: params.limit ?? DEFAULT_PAGE_SIZE,
+      offset: params.offset,
+    })}`,
+  );
 }
 
-export function getDeviceExperiments(deviceId: string): Promise<Experiment[]> {
-  return request<Experiment[]>(`/devices/${deviceId}/experiments`);
+export function getDeviceExperiments(
+  deviceId: string,
+  params: { q?: string; limit?: number; offset?: number } = {},
+): Promise<Page<Experiment>> {
+  return request<Page<Experiment>>(
+    `/devices/${deviceId}/experiments${buildQuery({
+      q: params.q,
+      limit: params.limit ?? DEFAULT_PAGE_SIZE,
+      offset: params.offset,
+    })}`,
+  );
 }
 
 export function getExperimentArtifacts(
   experimentId: string,
-): Promise<Artifact[]> {
-  return request<Artifact[]>(
-    `/artifacts${buildQuery({ experiment_id: experimentId })}`,
-  );
+  params: { q?: string; limit?: number; offset?: number } = {},
+): Promise<Page<Artifact>> {
+  return listArtifacts({ experiment_id: experimentId, ...params });
 }
 
 export function getPreview(artifactId: string): Promise<Preview | null> {

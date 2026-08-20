@@ -5,14 +5,19 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from lab_data.artifact_previews import build_artifact_preview_report
+from lab_data.device_experiment_linkage import HUMAN_REVIEWED_RAW_MATCH_FIELD
 from lab_data.experiment_search import ExperimentSearchRecord, SearchLineageEdge
 from lab_data.scientific_catalog import (
+    ARTIFACT_KINDS,
+    ENTITY_FILE,
+    SUBJECT_EXPERIMENT,
     Artifact,
     CatalogStore,
     Device,
+    deterministic_storage_reference_id,
 )
 
 __all__ = [
@@ -22,7 +27,15 @@ __all__ = [
     'find_device_experiments',
     'find_device_documents',
     'get_artifact_preview',
+    'Page',
 ]
+
+
+class Page(NamedTuple):
+    """A bounded, deterministically ordered page plus its matching total."""
+
+    items: tuple[dict[str, Any], ...]
+    total_count: int
 
 _DEVICE_FILTERS = frozenset(
     {
@@ -48,6 +61,10 @@ _ARTIFACT_FILTERS = frozenset(
         'relative_path',
     }
 )
+
+# ``/devices/{device_id}/documents`` keeps the narrower historical document
+# contract: only base PDF/PPT/PPTX files, and never slide-category decks.
+_DEVICE_DOCUMENT_EXTENSIONS = frozenset({'pdf', 'ppt', 'pptx'})
 
 
 def _require_device_id(device_id: str) -> str:
@@ -103,8 +120,11 @@ def _project_device(device: Device) -> dict[str, Any]:
     }
 
 
-def _project_artifact(artifact: Artifact) -> dict[str, Any]:
+def _project_artifact(
+    artifact: Artifact, *, derived_from: list[dict[str, str]]
+) -> dict[str, Any]:
     reference = artifact.storage_reference
+    relative_path = None if reference is None else reference.relative_path
     return {
         'artifact_id': artifact.artifact_id,
         'device_id': artifact.device_id,
@@ -115,10 +135,12 @@ def _project_artifact(artifact: Artifact) -> dict[str, Any]:
         'media_type': artifact.media_type,
         'review_state': artifact.review_state,
         'storage_source_id': None if reference is None else reference.storage_source_id,
-        'relative_path': None if reference is None else reference.relative_path,
+        'relative_path': relative_path,
+        'filename': None if relative_path is None else relative_path.rsplit('/', 1)[-1],
         'size_bytes': artifact.size_bytes,
         'mtime_ns': artifact.mtime_ns,
         'metadata': _json_safe(artifact.metadata),
+        'derived_from': derived_from,
     }
 
 
@@ -126,7 +148,12 @@ def _project_lineage(edge: SearchLineageEdge) -> dict[str, str]:
     return {'source': edge.source, 'target': edge.target, 'relation': edge.relation}
 
 
-def _project_experiment(record: ExperimentSearchRecord) -> dict[str, Any]:
+def _project_experiment(
+    record: ExperimentSearchRecord,
+    *,
+    measured_on: dict[str, Any] | None,
+    review_evidence: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
     return {
         'experiment_id': record.experiment_id,
         'metadata': _json_safe(record.metadata),
@@ -135,106 +162,301 @@ def _project_experiment(record: ExperimentSearchRecord) -> dict[str, Any]:
         'warnings': _json_safe(record.warnings),
         'confidence': record.confidence,
         'needs_review': record.needs_review,
+        'review_state': record.review_state,
+        'measured_on': measured_on,
+        'review_evidence': review_evidence,
     }
 
 
+def _measured_on_payload(
+    store: CatalogStore, record: ExperimentSearchRecord
+) -> dict[str, Any] | None:
+    """Project persisted device-directory linkage for one experiment page item."""
+
+    relationships = tuple(
+        relationship
+        for relationship in store.get_lineage(
+            SUBJECT_EXPERIMENT, record.experiment_id
+        )
+        if relationship.predicate == 'measured_on'
+    )
+    if not relationships:
+        return None
+    relationship = relationships[0]
+    claims = tuple(
+        claim
+        for claim in store.get_provenance(
+            SUBJECT_EXPERIMENT, record.experiment_id
+        )
+        if claim.field == 'measured_on_device'
+    )
+    claim = claims[0] if claims else None
+    return {
+        'device_id': relationship.target_id,
+        'evidence': (
+            '; '.join(claim.evidence)
+            if claim is not None and claim.evidence
+            else 'explicit device-directory context'
+        ),
+        'source_reference': (
+            claim.source_reference
+            if claim is not None
+            else relationship.provenance_source
+        ),
+        'extraction_method': claim.extraction_method if claim is not None else None,
+        'review_status': (
+            claim.review_status if claim is not None else relationship.review_state
+        ),
+    }
+
+
+def _review_evidence_payload(
+    store: CatalogStore, record: ExperimentSearchRecord
+) -> list[dict[str, Any]] | None:
+    """Project persisted human-review claims for one experiment page item."""
+
+    claims = tuple(
+        claim
+        for claim in store.get_provenance(SUBJECT_EXPERIMENT, record.experiment_id)
+        if claim.field == HUMAN_REVIEWED_RAW_MATCH_FIELD
+    )
+    if not claims:
+        return None
+    return [
+        {
+            'field': claim.field,
+            'value': _json_safe(claim.value),
+            'source_type': claim.source_type,
+            'source_reference': claim.source_reference,
+            'extraction_method': claim.extraction_method,
+            'category': claim.category,
+            'evidence': _json_safe(claim.evidence),
+            'review_status': claim.review_status,
+        }
+        for claim in claims
+    ]
+
+
+def _artifact_derived_from(
+    store: CatalogStore, artifact: Artifact
+) -> list[dict[str, str]]:
+    """Project persisted file-to-file derivation edges for one artifact."""
+
+    reference = artifact.storage_reference
+    if reference is None:
+        return []
+    file_id = deterministic_storage_reference_id(
+        storage_source_id=reference.storage_source_id,
+        relative_path=reference.relative_path,
+    )
+    edges = tuple(
+        edge
+        for edge in store.get_lineage(ENTITY_FILE, file_id)
+        if edge.predicate == 'derived_from'
+    )
+    if not edges:
+        return []
+    paths = store.resolve_file_references(
+        {edge.source_id for edge in edges} | {edge.target_id for edge in edges}
+    )
+    pairs = {
+        (paths[edge.source_id]['relative_path'], paths[edge.target_id]['relative_path'])
+        for edge in edges
+        if edge.source_id in paths and edge.target_id in paths
+    }
+    return [
+        {'source': source, 'target': target, 'relation': 'derived_from'}
+        for source, target in sorted(pairs)
+    ]
+
+
+def _normalize_q(q: str | None) -> str | None:
+    """Return a case-folded query string, or ``None`` for an empty query."""
+
+    if q is None:
+        return None
+    normalized = q.strip().casefold()
+    return normalized or None
+
+
+def _slice(items: tuple[Any, ...], limit: int, offset: int) -> tuple[Any, ...]:
+    return items[offset : offset + limit]
+
+
+def _device_matches_q(device: Device, needle: str) -> bool:
+    if needle in device.device_id.casefold():
+        return True
+    if needle in (device.display_label or '').casefold():
+        return True
+    if device.local_device_id and needle in device.local_device_id.casefold():
+        return True
+    return any(needle in alias.casefold() for alias in device.aliases)
+
+
+def _experiment_matches_q(record: ExperimentSearchRecord, needle: str) -> bool:
+    if needle in record.experiment_id.casefold():
+        return True
+    sample_id = record.metadata.get('sample_id')
+    return isinstance(sample_id, str) and needle in sample_id.casefold()
+
+
 def search_devices(
-    store: CatalogStore, *, filters: Mapping[str, Any] | None = None
-) -> tuple[dict[str, Any], ...]:
-    """Return deterministic device projections matching exact scalar filters."""
+    store: CatalogStore,
+    *,
+    filters: Mapping[str, Any] | None = None,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Page:
+    """Return a deterministically ordered device page plus its total count."""
 
     expected = _filters(filters, _DEVICE_FILTERS, 'device')
-    devices = []
-    for device in store.list_devices():
-        if all(getattr(device, key) == value for key, value in expected.items()):
-            devices.append(device)
-    return tuple(
-        _project_device(device)
-        for device in sorted(devices, key=lambda item: item.device_id)
+    needle = _normalize_q(q)
+    devices = [
+        device
+        for device in store.list_devices()
+        if all(getattr(device, key) == value for key, value in expected.items())
+        and (needle is None or _device_matches_q(device, needle))
+    ]
+    # Stable device ordering: device_id ascending.
+    devices.sort(key=lambda item: item.device_id)
+    total_count = len(devices)
+    return Page(
+        tuple(_project_device(device) for device in _slice(devices, limit, offset)),
+        total_count,
     )
 
 
 def search_experiments(
-    store: CatalogStore, *, filters: Mapping[str, Any] | None = None
-) -> tuple[dict[str, Any], ...]:
-    """Delegate experiment filtering to the canonical search implementation."""
+    store: CatalogStore,
+    *,
+    filters: Mapping[str, Any] | None = None,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Page:
+    """Return a canonically ordered experiment page plus its total count."""
 
-    return tuple(
-        _project_experiment(record)
-        for record in store.search_experiments(filters=filters)
+    needle = _normalize_q(q)
+    records = tuple(store.search_experiments(filters=filters))
+    if needle is not None:
+        records = tuple(
+            record for record in records if _experiment_matches_q(record, needle)
+        )
+    total_count = len(records)
+    page_items = _slice(records, limit, offset)
+    return Page(
+        tuple(
+            _project_experiment(
+                record,
+                measured_on=_measured_on_payload(store, record),
+                review_evidence=_review_evidence_payload(store, record),
+            )
+            for record in page_items
+        ),
+        total_count,
     )
 
 
-def search_artifacts(
-    store: CatalogStore, *, filters: Mapping[str, Any] | None = None
-) -> tuple[dict[str, Any], ...]:
-    """Return deterministic artifact projections matching exact filters."""
+def search_artifacts(  # noqa: PLR0913
+    store: CatalogStore,
+    *,
+    filters: Mapping[str, Any] | None = None,
+    q: str | None = None,
+    kind: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Page:
+    """Return a deterministically ordered artifact page plus its total count."""
 
     expected = _filters(filters, _ARTIFACT_FILTERS, 'artifact')
-    artifact_id = expected.get('artifact_id')
-    device_id = expected.get('device_id')
-    if isinstance(artifact_id, str) and artifact_id:
-        candidate = store.get_artifact(artifact_id)
-        artifacts = [] if candidate is None else [candidate]
-    elif isinstance(device_id, str) and device_id:
-        artifacts = list(store.list_artifacts(device_id=device_id))
-    else:
-        artifacts = list(store.list_artifacts())
-    matching = []
-    for artifact in artifacts:
-        reference = artifact.storage_reference
-        actual = {
-            'artifact_id': artifact.artifact_id,
-            'device_id': artifact.device_id,
-            'experiment_id': artifact.experiment_id,
-            'role': artifact.role,
-            'category': artifact.category,
-            'extension': artifact.extension,
-            'media_type': artifact.media_type,
-            'review_state': artifact.review_state,
-            'storage_source_id': None
-            if reference is None
-            else reference.storage_source_id,
-            'relative_path': None if reference is None else reference.relative_path,
-        }
-        if all(actual[key] == value for key, value in expected.items()):
-            matching.append(artifact)
-    return tuple(
-        _project_artifact(artifact)
-        for artifact in sorted(matching, key=lambda item: item.artifact_id)
+    if kind is not None and kind not in ARTIFACT_KINDS:
+        raise ValueError(f'unknown artifact kind: {kind!r}')
+    artifacts = store.page_artifacts(
+        filters=expected,
+        q=q,
+        kind=kind,
+        limit=limit,
+        offset=offset,
+    )
+    total_count = store.count_artifacts(filters=expected, q=q, kind=kind)
+    return Page(
+        tuple(
+            _project_artifact(
+                artifact, derived_from=_artifact_derived_from(store, artifact)
+            )
+            for artifact in artifacts
+        ),
+        total_count,
     )
 
 
 def find_device_experiments(
-    store: CatalogStore, device_id: str
-) -> tuple[dict[str, Any], ...]:
-    """Return experiments connected by explicit ``measured_on`` relationships."""
+    store: CatalogStore,
+    device_id: str,
+    *,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Page:
+    """Return device-measured experiments, ordered canonically, as a page."""
 
     device_id = _require_device_id(device_id)
-    return tuple(
-        _project_experiment(record)
-        for record in store.get_device_experiments(device_id)
+    needle = _normalize_q(q)
+    records = tuple(store.get_device_experiments(device_id))
+    if needle is not None:
+        records = tuple(
+            record for record in records if _experiment_matches_q(record, needle)
+        )
+    total_count = len(records)
+    page_items = _slice(records, limit, offset)
+    return Page(
+        tuple(
+            _project_experiment(
+                record,
+                measured_on=_measured_on_payload(store, record),
+                review_evidence=_review_evidence_payload(store, record),
+            )
+            for record in page_items
+        ),
+        total_count,
     )
 
 
 def find_device_documents(
-    store: CatalogStore, device_id: str
-) -> tuple[dict[str, Any], ...]:
-    """Return explicitly device-bound base PDF/PPT/PPTX artifacts only."""
+    store: CatalogStore,
+    device_id: str,
+    *,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Page:
+    """Return bounded device-bound PDF/PPT/PPTX documents plus their total."""
 
     device_id = _require_device_id(device_id)
-    documents = [
-        artifact
-        for artifact in store.list_artifacts(device_id=device_id)
-        if (
-            artifact.device_id == device_id
-            and artifact.extension.casefold().lstrip('.') in {'pdf', 'ppt', 'pptx'}
-            and artifact.category.casefold() != 'slide'
-        )
-    ]
-    return tuple(
-        _project_artifact(artifact)
-        for artifact in sorted(documents, key=lambda item: item.artifact_id)
+    filters = {'device_id': device_id}
+    artifacts = store.page_artifacts(
+        filters=filters,
+        q=q,
+        extensions=_DEVICE_DOCUMENT_EXTENSIONS,
+        exclude_slide_category=True,
+        limit=limit,
+        offset=offset,
+    )
+    total_count = store.count_artifacts(
+        filters=filters,
+        q=q,
+        extensions=_DEVICE_DOCUMENT_EXTENSIONS,
+        exclude_slide_category=True,
+    )
+    return Page(
+        tuple(
+            _project_artifact(
+                artifact, derived_from=_artifact_derived_from(store, artifact)
+            )
+            for artifact in artifacts
+        ),
+        total_count,
     )
 
 

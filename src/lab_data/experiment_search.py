@@ -89,10 +89,13 @@ class ExperimentSearchRecord:
     warnings: tuple[str, ...]
     confidence: float
     needs_review: bool
+    review_state: str = 'unknown'
 
     def __post_init__(self) -> None:
         if not isinstance(self.experiment_id, str) or not self.experiment_id:
             raise ValueError('experiment_id must be non-empty')
+        if not isinstance(self.review_state, str) or not self.review_state:
+            raise ValueError('review_state must be a non-empty string')
         object.__setattr__(self, 'metadata', _freeze(self.metadata))
         object.__setattr__(self, 'files_by_role', _freeze(self.files_by_role))
         object.__setattr__(self, 'lineage', tuple(self.lineage))

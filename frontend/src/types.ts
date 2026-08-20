@@ -15,6 +15,14 @@ export interface LineageEdge {
   relation: string;
 }
 
+export interface MeasuredOn {
+  device_id: string;
+  evidence: string;
+  source_reference: string;
+  extraction_method: string;
+  review_status: string;
+}
+
 export interface Experiment {
   experiment_id: string;
   metadata: Record<string, unknown>;
@@ -23,6 +31,8 @@ export interface Experiment {
   warnings: string[];
   confidence: number;
   needs_review: boolean;
+  review_state: string;
+  measured_on: MeasuredOn | null;
 }
 
 export interface Artifact {
@@ -36,9 +46,40 @@ export interface Artifact {
   review_state: string;
   storage_source_id: string | null;
   relative_path: string | null;
+  filename: string | null;
   size_bytes: number | null;
   mtime_ns: number | null;
   metadata: Record<string, unknown>;
+  derived_from: LineageEdge[];
+}
+
+export type ArtifactKind = 'document' | 'image' | 'data' | 'other';
+
+export interface Page<T> {
+  items: T[];
+  total_count: number;
+  limit: number;
+  offset: number;
+}
+
+export interface Summary {
+  devices: number;
+  experiments: number;
+  artifacts: number;
+}
+
+export interface ListParams {
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ExperimentFilterParams {
+  measurement_type?: string;
+  temperature_K?: number;
+  magnetic_field_T?: number;
+  measurement_point_label?: string;
+  excitation_wavelength_nm?: number;
 }
 
 export interface PreviewAsset {

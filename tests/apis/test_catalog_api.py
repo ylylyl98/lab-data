@@ -9,15 +9,18 @@ from nomad.config import config
 
 from lab_data.artifact_previews import build_artifact_preview
 from lab_data.scientific_catalog import (
+    ENTITY_FILE,
     SUBJECT_DEVICE,
     SUBJECT_EXPERIMENT,
     Artifact,
     CatalogSnapshot,
     Device,
     Experiment,
+    MetadataClaim,
     Relationship,
     SQLiteCatalogStore,
     StorageReference,
+    deterministic_storage_reference_id,
 )
 
 config.load_plugins()
@@ -53,6 +56,22 @@ def _seed(tmp_path: Path) -> tuple[Path, Path, Path]:
             experiment_id='exp-a',
             metadata={'sample_id': 'D356', 'measurement_type': 'optical'},
             files_by_role={'raw': (StorageReference('source', 'raw/D356.dat'),)},
+            claims=(
+                MetadataClaim(
+                    subject_type=SUBJECT_EXPERIMENT,
+                    subject_id='exp-a',
+                    field='measured_on_device',
+                    value={
+                        'device_id': 'D356',
+                        'directory_context': 'D356 WSe2_AuSplitGate',
+                    },
+                    source_type='storage_directory',
+                    source_reference='D356 WSe2_AuSplitGate',
+                    extraction_method='device_directory_context',
+                    category='device_linkage',
+                    review_status='unknown',
+                ),
+            ),
         ),
         Experiment(
             experiment_id='exp-b',
@@ -137,25 +156,28 @@ def test_routes_are_read_only_and_deterministic(tmp_path):
 
     devices = client.get('/devices')
     assert devices.status_code == 200  # noqa: PLR2004
-    assert [item['device_id'] for item in devices.json()] == ['D356', 'D357']
+    assert devices.json()['total_count'] == 2
+    assert devices.json()['limit'] == 50
+    assert devices.json()['offset'] == 0
+    assert [item['device_id'] for item in devices.json()['items']] == ['D356', 'D357']
 
     filtered = client.get('/devices', params={'device_id': 'D356'})
-    assert [item['device_id'] for item in filtered.json()] == ['D356']
-    assert filtered.json()[0]['display_label'] == 'A'
+    assert [item['device_id'] for item in filtered.json()['items']] == ['D356']
+    assert filtered.json()['items'][0]['display_label'] == 'A'
 
     experiments = client.get('/experiments')
     assert experiments.status_code == 200  # noqa: PLR2004
-    assert [item['experiment_id'] for item in experiments.json()] == [
+    assert [item['experiment_id'] for item in experiments.json()['items']] == [
         'exp-a',
         'exp-inferred',
         'exp-b',
     ]
 
     filtered = client.get('/experiments', params={'experiment_id': 'exp-a'})
-    assert [item['experiment_id'] for item in filtered.json()] == ['exp-a']
+    assert [item['experiment_id'] for item in filtered.json()['items']] == ['exp-a']
 
     artifacts = client.get('/artifacts')
-    assert [item['artifact_id'] for item in artifacts.json()] == [
+    assert [item['artifact_id'] for item in artifacts.json()['items']] == [
         'doc-a',
         'doc-b',
         'slides-b',
@@ -163,13 +185,18 @@ def test_routes_are_read_only_and_deterministic(tmp_path):
     ]
 
     filtered = client.get('/artifacts', params={'device_id': 'D356'})
-    assert [item['artifact_id'] for item in filtered.json()] == ['doc-a', 'table']
+    assert [item['artifact_id'] for item in filtered.json()['items']] == [
+        'doc-a',
+        'table',
+    ]
 
     device_experiments = client.get('/devices/D356/experiments')
-    assert [item['experiment_id'] for item in device_experiments.json()] == ['exp-a']
+    assert [
+        item['experiment_id'] for item in device_experiments.json()['items']
+    ] == ['exp-a']
 
     device_documents = client.get('/devices/D356/documents')
-    assert [item['artifact_id'] for item in device_documents.json()] == ['doc-a']
+    assert [item['artifact_id'] for item in device_documents.json()['items']] == ['doc-a']
 
     preview = client.get('/artifacts/table/preview')
     assert preview.status_code == 200  # noqa: PLR2004
@@ -184,6 +211,97 @@ def test_routes_are_read_only_and_deterministic(tmp_path):
     assert hashlib.sha256(catalog_path.read_bytes()).hexdigest() == catalog_hash
     assert _dir_files(catalog_path.parent) == catalog_files
     assert _tree_hashes(preview_root) == preview_before
+
+
+def test_experiment_provenance_projections(tmp_path):
+    catalog_path, preview_root, _ = _seed(tmp_path)
+    client = TestClient(create_app(catalog_path, preview_root))
+
+    measured = client.get('/experiments', params={'experiment_id': 'exp-a'})
+    measured_item = measured.json()['items'][0]
+    assert measured_item['review_state'] == 'unknown'
+    assert measured_item['measured_on'] == {
+        'device_id': 'D356',
+        'evidence': 'explicit device-directory context',
+        'source_reference': 'D356 WSe2_AuSplitGate',
+        'extraction_method': 'device_directory_context',
+        'review_status': 'unknown',
+    }
+
+    free = client.get('/experiments', params={'experiment_id': 'exp-b'})
+    free_item = free.json()['items'][0]
+    assert free_item['measured_on'] is None
+    assert free_item['review_state'] == 'unknown'
+
+
+def _lineage_seed(tmp_path: Path) -> Path:
+    catalog_path = tmp_path / 'catalog' / 'catalog.db'
+    catalog_path.parent.mkdir()
+    raw = StorageReference('source', 'raw/YZ356_BG1only.csv')
+    dat = StorageReference('source', 'processed/YZ356_BG1only_PL.dat')
+    linear = StorageReference('source', 'processed/YZ356_BG1only_PL_linear.png')
+    experiment = Experiment(
+        'exp-fig',
+        metadata={},
+        files_by_role={'raw': (raw,), 'processed': (dat,), 'figure': (linear,)},
+    )
+    artifact = Artifact(
+        'fig-linear',
+        extension='png',
+        media_type='image/png',
+        storage_reference=linear,
+    )
+
+    def file_id(reference: StorageReference) -> str:
+        return deterministic_storage_reference_id(
+            storage_source_id=reference.storage_source_id,
+            relative_path=reference.relative_path,
+        )
+
+    relationships = (
+        Relationship(
+            source_type=ENTITY_FILE,
+            source_id=file_id(dat),
+            predicate='derived_from',
+            target_type=ENTITY_FILE,
+            target_id=file_id(raw),
+        ),
+        Relationship(
+            source_type=ENTITY_FILE,
+            source_id=file_id(linear),
+            predicate='derived_from',
+            target_type=ENTITY_FILE,
+            target_id=file_id(dat),
+        ),
+    )
+    store = SQLiteCatalogStore(catalog_path)
+    store.rebuild(
+        CatalogSnapshot(
+            (experiment,), artifacts=(artifact,), relationships=relationships
+        )
+    )
+    store.close()
+    return catalog_path
+
+
+def test_artifact_derived_from_projection(tmp_path):
+    catalog_path = _lineage_seed(tmp_path)
+    client = TestClient(create_app(catalog_path, None))
+
+    response = client.get('/artifacts', params={'artifact_id': 'fig-linear'})
+    assert response.status_code == 200  # noqa: PLR2004
+    item = response.json()['items'][0]
+    assert item['derived_from'] == [
+        {
+            'source': 'processed/YZ356_BG1only_PL_linear.png',
+            'target': 'processed/YZ356_BG1only_PL.dat',
+            'relation': 'derived_from',
+        },
+    ]
+    assert not any(
+        Path(edge['source']).is_absolute() or Path(edge['target']).is_absolute()
+        for edge in item['derived_from']
+    )
 
 
 def test_missing_catalog_path_fails_without_creating_files(tmp_path):
@@ -281,45 +399,46 @@ def test_experiment_scalar_equality_filters(tmp_path):
     catalog_path = _experiment_filter_seed(tmp_path)
     client = TestClient(create_app(catalog_path, None))
 
-    assert [item['experiment_id'] for item in client.get('/experiments').json()] == [
-        'exp-a',
-        'exp-b',
-        'exp-c',
-    ]
+    assert [
+        item['experiment_id'] for item in client.get('/experiments').json()['items']
+    ] == ['exp-a', 'exp-b', 'exp-c']
 
     broad = client.get('/experiments', params={'sample_id': 'S1'})
     assert broad.status_code == 200  # noqa: PLR2004
-    assert [item['experiment_id'] for item in broad.json()] == ['exp-a', 'exp-b']
+    assert [item['experiment_id'] for item in broad.json()['items']] == [
+        'exp-a',
+        'exp-b',
+    ]
 
     by_measurement = client.get('/experiments', params={'measurement_type': 'optical'})
-    assert [item['experiment_id'] for item in by_measurement.json()] == [
+    assert [item['experiment_id'] for item in by_measurement.json()['items']] == [
         'exp-a',
         'exp-c',
     ]
 
     by_temperature = client.get('/experiments', params={'temperature_K': '77.0'})
-    assert [item['experiment_id'] for item in by_temperature.json()] == ['exp-a']
+    assert [item['experiment_id'] for item in by_temperature.json()['items']] == ['exp-a']
 
     by_averages = client.get('/experiments', params={'averages': '10'})
-    assert [item['experiment_id'] for item in by_averages.json()] == ['exp-b']
+    assert [item['experiment_id'] for item in by_averages.json()['items']] == ['exp-b']
 
     by_field = client.get('/experiments', params={'magnetic_field_T': '1.5'})
-    assert [item['experiment_id'] for item in by_field.json()] == ['exp-c']
+    assert [item['experiment_id'] for item in by_field.json()['items']] == ['exp-c']
 
     by_integration = client.get('/experiments', params={'integration_time_s': '0.06'})
-    assert [item['experiment_id'] for item in by_integration.json()] == ['exp-c']
+    assert [item['experiment_id'] for item in by_integration.json()['items']] == ['exp-c']
 
     by_point = client.get('/experiments', params={'measurement_point_label': 'P1'})
-    assert [item['experiment_id'] for item in by_point.json()] == ['exp-a']
+    assert [item['experiment_id'] for item in by_point.json()['items']] == ['exp-a']
 
     by_confidence = client.get('/experiments', params={'confidence': '0.9'})
-    assert [item['experiment_id'] for item in by_confidence.json()] == ['exp-a']
+    assert [item['experiment_id'] for item in by_confidence.json()['items']] == ['exp-a']
 
     by_review = client.get('/experiments', params={'needs_review': 'true'})
-    assert [item['experiment_id'] for item in by_review.json()] == ['exp-b']
+    assert [item['experiment_id'] for item in by_review.json()['items']] == ['exp-b']
 
     exact = client.get('/experiments', params={'experiment_id': 'exp-b'})
-    assert [item['experiment_id'] for item in exact.json()] == ['exp-b']
+    assert [item['experiment_id'] for item in exact.json()['items']] == ['exp-b']
 
 
 @pytest.mark.parametrize(
@@ -342,7 +461,7 @@ def test_experiment_remaining_scalar_filters(tmp_path, param, value, expected):
     client = TestClient(create_app(catalog_path, None))
     response = client.get('/experiments', params={param: value})
     assert response.status_code == 200  # noqa: PLR2004
-    assert [item['experiment_id'] for item in response.json()] == [expected]
+    assert [item['experiment_id'] for item in response.json()['items']] == [expected]
 
 
 @pytest.mark.parametrize(
@@ -361,3 +480,69 @@ def test_unknown_query_parameters_return_422(tmp_path, route, misspelled):
     detail = response.json()['detail']
     assert isinstance(detail, list)
     assert any(item.get('loc') == ['query', misspelled] for item in detail)
+
+
+def test_summary_counts(tmp_path):
+    catalog_path, preview_root, _ = _seed(tmp_path)
+    client = TestClient(create_app(catalog_path, preview_root))
+    assert client.get('/summary').json() == {
+        'devices': 2,
+        'experiments': 3,
+        'artifacts': 4,
+    }
+
+
+def test_list_envelope_shape_and_pagination_bounds(tmp_path):
+    catalog_path, preview_root, _ = _seed(tmp_path)
+    client = TestClient(create_app(catalog_path, preview_root))
+
+    body = client.get('/artifacts', params={'limit': 2, 'offset': 0}).json()
+    assert set(body) == {'items', 'total_count', 'limit', 'offset'}
+    assert len(body['items']) == 2
+    assert body['limit'] == 2
+    assert body['offset'] == 0
+    assert body['total_count'] == 4
+
+    assert client.get('/artifacts', params={'limit': 0}).status_code == 422  # noqa: PLR2004
+    assert client.get('/artifacts', params={'limit': 201}).status_code == 422  # noqa: PLR2004
+    assert client.get('/artifacts', params={'offset': -1}).status_code == 422  # noqa: PLR2004
+
+
+def test_artifact_pagination_adjacent_pages_do_not_overlap(tmp_path):
+    catalog_path, preview_root, _ = _seed(tmp_path)
+    client = TestClient(create_app(catalog_path, preview_root))
+
+    first = client.get('/artifacts', params={'limit': 2, 'offset': 0}).json()
+    second = client.get('/artifacts', params={'limit': 2, 'offset': 2}).json()
+
+    assert [item['artifact_id'] for item in first['items']] == ['doc-a', 'doc-b']
+    assert [item['artifact_id'] for item in second['items']] == ['slides-b', 'table']
+    assert first['total_count'] == second['total_count'] == 4
+
+
+def test_artifact_kind_filter(tmp_path):
+    catalog_path, preview_root, _ = _seed(tmp_path)
+    client = TestClient(create_app(catalog_path, preview_root))
+
+    data = client.get('/artifacts', params={'kind': 'data'})
+    assert [item['artifact_id'] for item in data.json()['items']] == ['table']
+    assert data.json()['total_count'] == 1
+    assert client.get('/artifacts', params={'kind': 'invalid'}).status_code == 422  # noqa: PLR2004
+
+
+def test_q_search_is_case_insensitive_substring(tmp_path):
+    catalog_path, preview_root, _ = _seed(tmp_path)
+    client = TestClient(create_app(catalog_path, preview_root))
+
+    devices = client.get('/devices', params={'q': '356'})
+    assert [item['device_id'] for item in devices.json()['items']] == ['D356']
+
+    experiments = client.get('/experiments', params={'q': 'd356'})
+    assert [item['experiment_id'] for item in experiments.json()['items']] == [
+        'exp-a',
+        'exp-inferred',
+    ]
+
+    artifacts = client.get('/artifacts', params={'q': 'D356'})
+    assert [item['artifact_id'] for item in artifacts.json()['items']] == ['doc-a']
+    assert artifacts.json()['items'][0]['filename'] == 'D356.ppt'

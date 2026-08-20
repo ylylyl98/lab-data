@@ -102,6 +102,12 @@ _MEASUREMENT_POINT_RE = re.compile(
 # because normalisation would strip the signed operators and decimal signs
 # that carry the meaning of the expression.
 _FIX_TG_RE = re.compile(r'^fixtg=([+-]?(?:\d+(?:[.p]\d+)?))$', re.I)
+_FIX_TG_V_SUFFIX_RE = re.compile(
+    r'^fixtg([+-]?(?:\d+(?:[.p]\d+)?))v(?:$|-)', re.I
+)
+_FIX_TG_EQUALS_PREFIX_RE = re.compile(
+    r'^fixtg=([+-]?(?:\d+(?:[.p]\d+)?))-', re.I
+)
 _BIAS_RE = re.compile(
     r'^vb([+-]?(?:\d+(?:[.p]\d+)?))to([+-]?(?:\d+(?:[.p]\d+)?))$',
     re.I,
@@ -528,6 +534,17 @@ def _extract_electrical(stem: str) -> tuple[_ElectricalExtraction, list[str]]:
         if fix_tg:
             result.fixed_top_gate_V = _parse_decimal(fix_tg.group(1))
             result.gates.add('TG')
+            continue
+
+        fix_tg_prefix = _FIX_TG_V_SUFFIX_RE.match(lower) or (
+            _FIX_TG_EQUALS_PREFIX_RE.match(lower)
+        )
+        if fix_tg_prefix:
+            result.fixed_top_gate_V = _parse_decimal(fix_tg_prefix.group(1))
+            result.gates.add('TG')
+            remainder = token[len(fix_tg_prefix.group(0)):].lstrip('-')
+            if remainder:
+                warnings.append(f'unsupported electrical expression: {remainder}')
             continue
 
         if lower == 'tgonly':

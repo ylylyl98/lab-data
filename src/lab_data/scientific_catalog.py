@@ -237,6 +237,95 @@ _DEVICES_QUALIFIED_INDEX = (
 )
 
 
+# Deterministic, human-friendly artifact kinds for the bounded retrieval API.
+# Classification is extension-first, with ``media_type`` used only as a
+# secondary image signal. ``other`` is every artifact that does not match the
+# image, document, or data extension sets (and is therefore always an exact
+# complement rather than an inferred label).
+IMAGE_EXTENSIONS = frozenset(
+    {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tif', 'tiff', 'webp', 'svg', 'fig'}
+)
+DOCUMENT_EXTENSIONS = frozenset(
+    {'pdf', 'ppt', 'pptx', 'doc', 'docx', 'txt', 'md', 'ipynb'}
+)
+DATA_EXTENSIONS = frozenset(
+    {
+        'csv',
+        'tsv',
+        'dat',
+        'xlsx',
+        'xls',
+        'mat',
+        'spe',
+        'phu',
+        'asc',
+        'sif',
+        'json',
+        'jsonl',
+        'm',
+        'npy',
+        'npz',
+        'h5',
+        'hdf5',
+    }
+)
+ARTIFACT_KINDS = frozenset({'document', 'image', 'data', 'other'})
+ARTIFACT_KIND_EXTENSIONS: dict[str, frozenset[str]] = {
+    'image': IMAGE_EXTENSIONS,
+    'document': DOCUMENT_EXTENSIONS,
+    'data': DATA_EXTENSIONS,
+}
+
+# Column names accepted as exact-equality artifact filters. Kept as an explicit
+# allowlist so SQL fragments are never built from caller-controlled strings.
+_ARTIFACT_FILTER_COLUMNS = frozenset(
+    {
+        'artifact_id',
+        'device_id',
+        'experiment_id',
+        'role',
+        'category',
+        'extension',
+        'media_type',
+        'review_state',
+        'storage_source_id',
+        'relative_path',
+    }
+)
+
+# Normalizes a stored extension (for example ``.PDF`` or ``PDF``) to a
+# lowercase, dot-free token for deterministic kind classification.
+_EXTENSION_EXPR = "LOWER(TRIM(extension, '.'))"
+
+
+def _artifact_kind_condition(kind: str) -> tuple[str, list[Any]]:
+    """Return a parameterized SQL fragment for one artifact ``kind``."""
+
+    def extension_set(name: str) -> tuple[str, list[Any]]:
+        extensions = sorted(ARTIFACT_KIND_EXTENSIONS[name])
+        placeholders = ', '.join('?' for _ in extensions)
+        return f'{_EXTENSION_EXPR} IN ({placeholders})', list(extensions)
+
+    image_sql, image_params = extension_set('image')
+    document_sql, document_params = extension_set('document')
+    data_sql, data_params = extension_set('data')
+
+    image_sql = f'({image_sql} OR LOWER(media_type) LIKE ?)'
+    image_params.append('image/%')
+
+    if kind == 'image':
+        return image_sql, image_params
+    if kind == 'document':
+        return f'({document_sql})', document_params
+    if kind == 'data':
+        return f'({data_sql})', data_params
+    # ``other`` is the complement of the three explicit kinds.
+    return (
+        f'(NOT {image_sql} AND NOT ({document_sql}) AND NOT ({data_sql}))',
+        image_params + document_params + data_params,
+    )
+
+
 def _freeze(value: Any) -> Any:
     """Return an immutable, value-preserving representation of ``value``."""
 
@@ -856,6 +945,7 @@ def _to_search_record(
         warnings=experiment.warnings,
         confidence=experiment.confidence,
         needs_review=experiment.needs_review,
+        review_state=experiment.review_state,
     )
 
 
@@ -908,6 +998,36 @@ class CatalogStore(Protocol):
     def list_artifacts(self, *, device_id: str | None = None) -> tuple[Artifact, ...]:
         """Return persisted artifacts in canonical order, optionally by device."""
 
+    def count_devices(self) -> int:
+        """Return the number of persisted devices without materializing rows."""
+
+    def count_experiments(self) -> int:
+        """Return the number of persisted experiments without materializing rows."""
+
+    def count_artifacts(
+        self,
+        *,
+        filters: Mapping[str, Any] | None = None,
+        q: str | None = None,
+        kind: str | None = None,
+        extensions: frozenset[str] | None = None,
+        exclude_slide_category: bool = False,
+    ) -> int:
+        """Return the count of artifacts matching the bounded retrieval filters."""
+
+    def page_artifacts(  # noqa: PLR0913
+        self,
+        *,
+        filters: Mapping[str, Any] | None = None,
+        q: str | None = None,
+        kind: str | None = None,
+        extensions: frozenset[str] | None = None,
+        exclude_slide_category: bool = False,
+        limit: int,
+        offset: int,
+    ) -> tuple[Artifact, ...]:
+        """Return one bounded, deterministically ordered page of artifacts."""
+
     def get_provenance(
         self, subject_type: str, subject_id: str
     ) -> tuple[MetadataClaim, ...]:
@@ -915,6 +1035,11 @@ class CatalogStore(Protocol):
 
     def get_lineage(self, entity_type: str, entity_id: str) -> tuple[Relationship, ...]:
         """Return persisted relationships touching one entity."""
+
+    def resolve_file_references(
+        self, file_ids: Sequence[str]
+    ) -> dict[str, Mapping[str, str]]:
+        """Map deterministic file IDs to their storage reference paths."""
 
     def get_device_experiments(
         self, device_id: str
@@ -1006,10 +1131,12 @@ class SQLiteCatalogStore:
         self._conn: sqlite3.Connection | None = None
         self._search_index_cache: ExperimentSearchIndex | None = None
         self._search_index_data_version: int | None = None
+        self._file_reference_cache: dict[str, dict[str, str]] | None = None
 
     def _invalidate_search_index(self) -> None:
         self._search_index_cache = None
         self._search_index_data_version = None
+        self._file_reference_cache = None
 
     def _connection(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -1465,6 +1592,131 @@ class SQLiteCatalogStore:
             row, self.get_provenance(SUBJECT_ARTIFACT, artifact_id)
         )
 
+    def _artifact_where(
+        self,
+        filters: Mapping[str, Any] | None,
+        *,
+        q: str | None,
+        kind: str | None,
+        extensions: frozenset[str] | None,
+        exclude_slide_category: bool,
+    ) -> tuple[str, list[Any]]:
+        """Build a parameterized WHERE clause for bounded artifact queries."""
+
+        clauses: list[str] = []
+        params: list[Any] = []
+        for key, value in (filters or {}).items():
+            if key not in _ARTIFACT_FILTER_COLUMNS:
+                raise ValueError(f'unknown artifact filter(s): {key}')
+            if value is None:
+                clauses.append(f'{key} IS NULL')
+            else:
+                clauses.append(f'{key} = ?')
+                params.append(value)
+
+        needle: str | None = None
+        if q is not None and q.strip():
+            needle = f'%{q.casefold()}%'
+            clauses.append(
+                '(LOWER(artifact_id) LIKE ? OR LOWER(relative_path) LIKE ?)'
+            )
+            params.extend((needle, needle))
+
+        if kind is not None:
+            if kind not in ARTIFACT_KINDS:
+                raise ValueError(f'unknown artifact kind: {kind!r}')
+            kind_sql, kind_params = _artifact_kind_condition(kind)
+            clauses.append(kind_sql)
+            params.extend(kind_params)
+
+        if extensions is not None:
+            normalized = frozenset(
+                extension.casefold().lstrip('.') for extension in extensions
+            )
+            placeholders = ', '.join('?' for _ in normalized)
+            clauses.append(f'{_EXTENSION_EXPR} IN ({placeholders})')
+            params.extend(sorted(normalized))
+
+        if exclude_slide_category:
+            clauses.append("LOWER(category) != 'slide'")
+
+        if not clauses:
+            return '', []
+        where = ' WHERE ' + ' AND '.join(f'({clause})' for clause in clauses)
+        return where, params
+
+    def count_devices(self) -> int:
+        row = (
+            self._connection()
+            .execute(f'SELECT COUNT(*) FROM {_DEVICES_TABLE}')
+            .fetchone()
+        )
+        return int(row[0])
+
+    def count_experiments(self) -> int:
+        row = (
+            self._connection()
+            .execute(f'SELECT COUNT(*) FROM {_EXPERIMENTS_TABLE}')
+            .fetchone()
+        )
+        return int(row[0])
+
+    def count_artifacts(
+        self,
+        *,
+        filters: Mapping[str, Any] | None = None,
+        q: str | None = None,
+        kind: str | None = None,
+        extensions: frozenset[str] | None = None,
+        exclude_slide_category: bool = False,
+    ) -> int:
+        """Return the count of artifacts matching the bounded retrieval filters."""
+
+        where, params = self._artifact_where(
+            filters,
+            q=q,
+            kind=kind,
+            extensions=extensions,
+            exclude_slide_category=exclude_slide_category,
+        )
+        row = (
+            self._connection()
+            .execute(f'SELECT COUNT(*) FROM {_ARTIFACTS_TABLE}{where}', params)
+            .fetchone()
+        )
+        return int(row[0])
+
+    def page_artifacts(  # noqa: PLR0913
+        self,
+        *,
+        filters: Mapping[str, Any] | None = None,
+        q: str | None = None,
+        kind: str | None = None,
+        extensions: frozenset[str] | None = None,
+        exclude_slide_category: bool = False,
+        limit: int,
+        offset: int,
+    ) -> tuple[Artifact, ...]:
+        """Return one bounded, artifact_id-ordered page without hydrating claims."""
+
+        where, params = self._artifact_where(
+            filters,
+            q=q,
+            kind=kind,
+            extensions=extensions,
+            exclude_slide_category=exclude_slide_category,
+        )
+        rows = (
+            self._connection()
+            .execute(
+                f'SELECT * FROM {_ARTIFACTS_TABLE}{where} '
+                'ORDER BY artifact_id ASC LIMIT ? OFFSET ?',
+                [*params, limit, offset],
+            )
+            .fetchall()
+        )
+        return tuple(_artifact_from_row(row, ()) for row in rows)
+
     def get_provenance(
         self, subject_type: str, subject_id: str
     ) -> tuple[MetadataClaim, ...]:
@@ -1495,6 +1747,45 @@ class SQLiteCatalogStore:
             .fetchall()
         )
         return tuple(_relationship_from_row(row) for row in rows)
+
+    def resolve_file_references(
+        self, file_ids: Sequence[str]
+    ) -> dict[str, Mapping[str, str]]:
+        """Map deterministic file IDs to ``storage_source_id``/``relative_path``.
+
+        File identities are recomputed in Python so this stays read-only and
+        independent of any schema-side hash helper. The scan is memoized per
+        store instance; rebuilds reset the cache.
+        """
+
+        requested = {file_id for file_id in file_ids if file_id}
+        if not requested:
+            return {}
+        if self._file_reference_cache is None:
+            cache: dict[str, dict[str, str]] = {}
+            connection = self._connection()
+            for table, source_column, path_column in (
+                (_EXPERIMENT_FILES_TABLE, 'storage_source_id', 'relative_path'),
+                (_ARTIFACTS_TABLE, 'storage_source_id', 'relative_path'),
+            ):
+                for row in connection.execute(
+                    f'SELECT {source_column}, {path_column} FROM {table} '
+                    f'WHERE {source_column} IS NOT NULL AND {path_column} IS NOT NULL'
+                ):
+                    file_id = deterministic_storage_reference_id(
+                        storage_source_id=row[source_column],
+                        relative_path=row[path_column],
+                    )
+                    cache[file_id] = {
+                        'storage_source_id': row[source_column],
+                        'relative_path': row[path_column],
+                    }
+            self._file_reference_cache = cache
+        return {
+            file_id: self._file_reference_cache[file_id]
+            for file_id in requested
+            if file_id in self._file_reference_cache
+        }
 
     def get_device_experiments(
         self, device_id: str

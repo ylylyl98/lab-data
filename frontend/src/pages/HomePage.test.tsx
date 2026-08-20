@@ -2,24 +2,38 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  getSummary,
+  listArtifacts,
+  listDevices,
+  listExperiments,
   searchArtifacts,
   searchDevices,
   searchExperiments,
 } from '../api';
+import type { Page } from '../types';
 import { HomePage } from './HomePage';
 
 vi.mock('../api', () => ({
-  listDevices: vi.fn().mockResolvedValue([]),
-  listExperiments: vi.fn().mockResolvedValue([]),
-  listArtifacts: vi.fn().mockResolvedValue([]),
-  searchDevices: vi.fn().mockResolvedValue([]),
-  searchExperiments: vi.fn().mockResolvedValue([]),
-  searchArtifacts: vi.fn().mockResolvedValue([]),
+  getSummary: vi.fn(),
+  listDevices: vi.fn(),
+  listExperiments: vi.fn(),
+  listArtifacts: vi.fn(),
+  searchDevices: vi.fn(),
+  searchExperiments: vi.fn(),
+  searchArtifacts: vi.fn(),
 }));
 
+const getSummaryMock = vi.mocked(getSummary);
+const listDevicesMock = vi.mocked(listDevices);
+const listExperimentsMock = vi.mocked(listExperiments);
+const listArtifactsMock = vi.mocked(listArtifacts);
 const searchDevicesMock = vi.mocked(searchDevices);
 const searchExperimentsMock = vi.mocked(searchExperiments);
 const searchArtifactsMock = vi.mocked(searchArtifacts);
+
+function page<T>(items: T[]): Page<T> {
+  return { items, total_count: items.length, limit: 50, offset: 0 };
+}
 
 function renderHome() {
   return render(
@@ -29,45 +43,56 @@ function renderHome() {
   );
 }
 
-function submit(segment: string, query: string) {
-  fireEvent.click(screen.getByRole('tab', { name: segment }));
-  fireEvent.change(screen.getByLabelText('Search ID'), {
-    target: { value: query },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-}
-
 async function flush() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 
-describe('HomePage search', () => {
+describe('HomePage', () => {
   beforeEach(() => {
-    searchDevicesMock.mockClear();
-    searchExperimentsMock.mockClear();
-    searchArtifactsMock.mockClear();
+    getSummaryMock.mockReset();
+    listDevicesMock.mockReset();
+    listExperimentsMock.mockReset();
+    listArtifactsMock.mockReset();
+    searchDevicesMock.mockReset();
+    searchExperimentsMock.mockReset();
+    searchArtifactsMock.mockReset();
+
+    getSummaryMock.mockResolvedValue({
+      devices: 3,
+      experiments: 5,
+      artifacts: 9,
+    });
+    listDevicesMock.mockResolvedValue(page([]));
+    listExperimentsMock.mockResolvedValue(page([]));
+    listArtifactsMock.mockResolvedValue(page([]));
+    searchDevicesMock.mockResolvedValue(page([]));
+    searchExperimentsMock.mockResolvedValue(page([]));
+    searchArtifactsMock.mockResolvedValue(page([]));
   });
 
-  it('searches devices by device_id', async () => {
+  it('loads the summary without fetching full catalogs on mount', async () => {
     renderHome();
-    submit('Devices', 'D356');
+    await flush();
+    expect(getSummaryMock).toHaveBeenCalledTimes(1);
+    expect(listDevicesMock).not.toHaveBeenCalled();
+    expect(listExperimentsMock).not.toHaveBeenCalled();
+    expect(listArtifactsMock).not.toHaveBeenCalled();
+    expect(searchDevicesMock).not.toHaveBeenCalled();
+    expect(searchExperimentsMock).not.toHaveBeenCalled();
+    expect(searchArtifactsMock).not.toHaveBeenCalled();
+  });
+
+  it('runs a global search across all three entities', async () => {
+    renderHome();
+    fireEvent.change(screen.getByLabelText('Search query'), {
+      target: { value: 'D356' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(searchDevicesMock).toHaveBeenCalledWith('D356');
-    await flush();
-  });
-
-  it('searches experiments by experiment_id', async () => {
-    renderHome();
-    submit('Experiments', 'YZ247-0432');
-    expect(searchExperimentsMock).toHaveBeenCalledWith('YZ247-0432');
-    await flush();
-  });
-
-  it('searches artifacts by artifact_id', async () => {
-    renderHome();
-    submit('Artifacts', 'art-1');
-    expect(searchArtifactsMock).toHaveBeenCalledWith('art-1');
+    expect(searchExperimentsMock).toHaveBeenCalledWith('D356');
+    expect(searchArtifactsMock).toHaveBeenCalledWith('D356');
     await flush();
   });
 });

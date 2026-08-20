@@ -23,6 +23,9 @@ GRATING_GROOVES_PER_MM_300 = 300
 STAGE_POSITION_50 = 50
 TWO_EXPERIMENTS = 2
 FIXED_TOP_GATE_V_NEG_0P2 = -0.2
+FIXED_TOP_GATE_V_4 = 4.0
+FIXED_TOP_GATE_V_NEG_4 = -4.0
+FIXED_TOP_GATE_V_4P5 = 4.5
 BIAS_POSITIVE_8 = 8.0
 BIAS_NEGATIVE_8 = -8.0
 BIAS_POSITIVE_20 = 20.0
@@ -496,6 +499,56 @@ def test_fix_tg_negative(tmp_path):
     exp = _scan_single(tmp_path, 'D356_FixTG=-0.2')
 
     assert exp.metadata.fixed_top_gate_V == FIXED_TOP_GATE_V_NEG_0P2
+
+
+def test_fix_tg_v_suffix(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_FixTG4V')
+
+    assert exp.metadata.fixed_top_gate_V == FIXED_TOP_GATE_V_4
+
+
+def test_fix_tg_v_suffix_negative(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_FixTG-4V')
+
+    assert exp.metadata.fixed_top_gate_V == FIXED_TOP_GATE_V_NEG_4
+
+
+def test_fix_tg_v_suffix_p_decimal(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_FixTG4p5V')
+
+    assert exp.metadata.fixed_top_gate_V == FIXED_TOP_GATE_V_4P5
+
+
+def test_fix_tg_v_suffix_zero(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_FixTG0V')
+
+    assert exp.metadata.fixed_top_gate_V == 0.0
+
+
+def test_fix_tg_without_v_suffix_stays_unsupported(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_FixTG4')
+
+    assert exp.metadata.fixed_top_gate_V is None
+
+
+def test_fix_tg_v_suffix_with_unsupported_sweep_warns(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_FixTG4V-SweepBG1=2')
+
+    assert exp.metadata.fixed_top_gate_V == FIXED_TOP_GATE_V_4
+    assert any(
+        warning == 'unsupported electrical expression: SweepBG1=2'
+        for warning in exp.warnings
+    )
+
+
+def test_fix_tg_equals_prefix_with_unsupported_sweep_warns(tmp_path):
+    exp = _scan_single(tmp_path, 'D356_FixTG=-4-SweepBG1=2')
+
+    assert exp.metadata.fixed_top_gate_V == FIXED_TOP_GATE_V_NEG_4
+    assert any(
+        warning == 'unsupported electrical expression: SweepBG1=2'
+        for warning in exp.warnings
+    )
 
 
 def test_active_gate_tgonly(tmp_path):

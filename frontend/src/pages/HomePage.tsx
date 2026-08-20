@@ -2,58 +2,53 @@ import { Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  listArtifacts,
-  listDevices,
-  listExperiments,
+  getSummary,
   searchArtifacts,
   searchDevices,
   searchExperiments,
 } from '../api';
 import { TypeBadge } from '../components/TypeBadge';
-import type { Artifact, Device, EntityType, Experiment } from '../types';
+import { artifactLabel } from '../format';
+import type {
+  Artifact,
+  Device,
+  EntityType,
+  Experiment,
+  Page,
+  Summary,
+} from '../types';
 
-const ENTITIES: EntityType[] = ['devices', 'experiments', 'artifacts'];
-
-type Result =
-  | { type: 'devices'; item: Device }
-  | { type: 'experiments'; item: Experiment }
-  | { type: 'artifacts'; item: Artifact };
-
-function resultLink(result: Result): string {
-  if (result.type === 'devices') {
-    return `/devices/${result.item.device_id}`;
-  }
-  if (result.type === 'experiments') {
-    return `/experiments/${result.item.experiment_id}`;
-  }
-  return `/artifacts/${result.item.artifact_id}`;
-}
-
-function resultLabel(result: Result): string {
-  if (result.type === 'devices') {
-    return result.item.device_id;
-  }
-  if (result.type === 'experiments') {
-    return result.item.experiment_id;
-  }
-  return result.item.artifact_id;
+interface SearchResults {
+  q: string;
+  devices: Page<Device>;
+  experiments: Page<Experiment>;
+  artifacts: Page<Artifact>;
 }
 
 export function HomePage() {
-  const [entity, setEntity] = useState<EntityType>('devices');
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Result[] | null>(null);
+  const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-
   useEffect(() => {
-    listDevices().then(setDevices).catch(() => setDevices([]));
-    listExperiments().then(setExperiments).catch(() => setExperiments([]));
-    listArtifacts().then(setArtifacts).catch(() => setArtifacts([]));
+    let active = true;
+    getSummary()
+      .then((value) => {
+        if (active) {
+          setSummary(value);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSummaryError(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   function runSearch() {
@@ -63,25 +58,20 @@ export function HomePage() {
     }
     setLoading(true);
     setError(false);
-    const request =
-      entity === 'devices'
-        ? searchDevices(trimmed).then(
-            (items): Result[] =>
-              items.map((item) => ({ type: 'devices' as const, item })),
-          )
-        : entity === 'experiments'
-          ? searchExperiments(trimmed).then(
-              (items): Result[] =>
-                items.map((item) => ({ type: 'experiments' as const, item })),
-            )
-          : searchArtifacts(trimmed).then(
-              (items): Result[] =>
-                items.map((item) => ({ type: 'artifacts' as const, item })),
-            );
-    request
-      .then(setResults)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+    Promise.all([
+      searchDevices(trimmed),
+      searchExperiments(trimmed),
+      searchArtifacts(trimmed),
+    ])
+      .then(([devices, experiments, artifacts]) => {
+        setResults({ q: trimmed, devices, experiments, artifacts });
+      })
+      .catch(() => {
+        setError(true);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }
 
   return (
@@ -94,26 +84,12 @@ export function HomePage() {
             runSearch();
           }}
         >
-          <div className="segmented" role="tablist" aria-label="Entity type">
-            {ENTITIES.map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={entity === value}
-                className={entity === value ? 'segment active' : 'segment'}
-                onClick={() => setEntity(value)}
-              >
-                {value[0].toUpperCase() + value.slice(1)}
-              </button>
-            ))}
-          </div>
           <div className="search-row">
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="ID"
-              aria-label="Search ID"
+              placeholder="Search devices, experiments, and artifacts"
+              aria-label="Search query"
             />
             <button type="submit" className="icon-button" aria-label="Search">
               <Search size={16} />
@@ -122,71 +98,102 @@ export function HomePage() {
         </form>
         {loading && <p className="muted">Loading</p>}
         {error && <p className="error">Search failed</p>}
-        {results && results.length === 0 && <p className="muted">No matches</p>}
-        {results && results.length > 0 && (
-          <ul className="result-list">
-            {results.map((result) => (
-              <li key={resultLink(result)}>
-                <TypeBadge type={result.type} />
-                <Link className="id-link" to={resultLink(result)}>
-                  {resultLabel(result)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       <section className="browse">
-        <BrowseColumn
-          title="Devices"
-          items={devices.map((item) => ({
-            id: item.device_id,
-            to: `/devices/${item.device_id}`,
-          }))}
-        />
-        <BrowseColumn
-          title="Experiments"
-          items={experiments.map((item) => ({
-            id: item.experiment_id,
-            to: `/experiments/${item.experiment_id}`,
-          }))}
-        />
-        <BrowseColumn
-          title="Artifacts"
-          items={artifacts.map((item) => ({
-            id: item.artifact_id,
-            to: `/artifacts/${item.artifact_id}`,
-          }))}
-        />
+        <Link className="summary-card" to="/devices">
+          <span className="summary-card-title">Devices</span>
+          <span className="summary-card-count">
+            {summary ? summary.devices : '...'}
+          </span>
+        </Link>
+        <Link className="summary-card" to="/experiments">
+          <span className="summary-card-title">Experiments</span>
+          <span className="summary-card-count">
+            {summary ? summary.experiments : '...'}
+          </span>
+        </Link>
+        <Link className="summary-card" to="/artifacts">
+          <span className="summary-card-title">Artifacts</span>
+          <span className="summary-card-count">
+            {summary ? summary.artifacts : '...'}
+          </span>
+        </Link>
       </section>
+
+      {summaryError && <p className="error">Summary unavailable</p>}
+
+      {results && (
+        <section className="search-results">
+          <ResultGroup
+            type="devices"
+            title="Devices"
+            page={results.devices}
+            viewAllTo={`/devices?q=${encodeURIComponent(results.q)}`}
+            itemTo={(item) => `/devices/${item.device_id}`}
+            itemLabel={(item) => item.display_label || item.device_id}
+          />
+          <ResultGroup
+            type="experiments"
+            title="Experiments"
+            page={results.experiments}
+            viewAllTo={`/experiments?q=${encodeURIComponent(results.q)}`}
+            itemTo={(item) => `/experiments/${item.experiment_id}`}
+            itemLabel={(item) => item.experiment_id}
+          />
+          <ResultGroup
+            type="artifacts"
+            title="Artifacts"
+            page={results.artifacts}
+            viewAllTo={`/artifacts?q=${encodeURIComponent(results.q)}`}
+            itemTo={(item) => `/artifacts/${item.artifact_id}`}
+            itemLabel={artifactLabel}
+          />
+        </section>
+      )}
     </div>
   );
 }
 
-function BrowseColumn({
+function ResultGroup<T>({
+  type,
   title,
-  items,
+  page,
+  viewAllTo,
+  itemTo,
+  itemLabel,
 }: {
+  type: EntityType;
   title: string;
-  items: { id: string; to: string }[];
+  page: Page<T>;
+  viewAllTo: string;
+  itemTo: (item: T) => string;
+  itemLabel: (item: T) => string;
 }) {
   return (
-    <div className="panel">
-      <h2>{title}</h2>
-      {items.length === 0 ? (
-        <p className="muted">(empty)</p>
+    <section className="panel">
+      <div className="panel-head">
+        <TypeBadge type={type} />
+        <h2>{title}</h2>
+        <span className="muted">{page.total_count}</span>
+      </div>
+      {page.items.length === 0 ? (
+        <p className="muted">No matches</p>
       ) : (
-        <ul className="link-list">
-          {items.map((item) => (
-            <li key={item.id}>
-              <Link className="id-link" to={item.to}>
-                {item.id}
+        <ul className="result-list">
+          {page.items.map((item) => (
+            <li key={itemTo(item)}>
+              <TypeBadge type={type} />
+              <Link className="id-link" to={itemTo(item)}>
+                {itemLabel(item)}
               </Link>
             </li>
           ))}
         </ul>
       )}
-    </div>
+      <Link className="view-all" to={viewAllTo}>
+        View all
+      </Link>
+    </section>
   );
 }

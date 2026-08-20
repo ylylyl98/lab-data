@@ -6,14 +6,15 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from nomad.config import config
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from lab_data.artifact_previews import read_artifact_preview_asset
 from lab_data.catalog_retrieval import (
+    Page,
     find_device_documents,
     find_device_experiments,
     get_artifact_preview,
@@ -60,6 +61,15 @@ def _read_only_catalog(path: Path | None) -> Iterator[SQLiteCatalogStore]:
         store.close()
 
 
+def _envelope(page: Page, limit: int, offset: int) -> dict[str, Any]:
+    return {
+        'items': list(page.items),
+        'total_count': page.total_count,
+        'limit': limit,
+        'offset': offset,
+    }
+
+
 class DeviceFilters(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -69,6 +79,9 @@ class DeviceFilters(BaseModel):
     local_device_id: str | None = None
     device_type: str | None = None
     review_state: str | None = None
+    limit: int = Field(50, ge=1, le=200)
+    offset: int = Field(0, ge=0)
+    q: str | None = None
 
 
 class ExperimentFilters(BaseModel):
@@ -94,6 +107,9 @@ class ExperimentFilters(BaseModel):
     bias_start_V: float | None = None
     bias_stop_V: float | None = None
     back_gate_topology: str | None = None
+    limit: int = Field(50, ge=1, le=200)
+    offset: int = Field(0, ge=0)
+    q: str | None = None
 
 
 class ArtifactFilters(BaseModel):
@@ -109,6 +125,10 @@ class ArtifactFilters(BaseModel):
     review_state: str | None = None
     storage_source_id: str | None = None
     relative_path: str | None = None
+    limit: int = Field(50, ge=1, le=200)
+    offset: int = Field(0, ge=0)
+    q: str | None = None
+    kind: Literal['document', 'image', 'data', 'other'] | None = None
 
 
 def create_app(
@@ -121,51 +141,100 @@ def create_app(
     async def root() -> dict[str, str]:
         return {'message': 'Hello World'}
 
-    @app.get('/devices')
-    def list_devices(
-        filters: Annotated[DeviceFilters, Query()],
-    ) -> list[dict[str, Any]]:
+    @app.get('/summary')
+    def summary() -> dict[str, int]:
         with _read_only_catalog(catalog_path) as store:
-            return list(
+            return {
+                'devices': store.count_devices(),
+                'experiments': store.count_experiments(),
+                'artifacts': store.count_artifacts(),
+            }
+
+    @app.get('/devices')
+    def list_devices(filters: Annotated[DeviceFilters, Query()]) -> dict[str, Any]:
+        with _read_only_catalog(catalog_path) as store:
+            return _envelope(
                 search_devices(
                     store,
-                    filters=filters.model_dump(exclude_none=True),
-                )
+                    filters=filters.model_dump(
+                        exclude={'limit', 'offset', 'q'}, exclude_none=True
+                    ),
+                    q=filters.q,
+                    limit=filters.limit,
+                    offset=filters.offset,
+                ),
+                filters.limit,
+                filters.offset,
             )
 
     @app.get('/experiments')
     def list_experiments(
         filters: Annotated[ExperimentFilters, Query()],
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         with _read_only_catalog(catalog_path) as store:
-            return list(
+            return _envelope(
                 search_experiments(
                     store,
-                    filters=filters.model_dump(exclude_none=True),
-                )
+                    filters=filters.model_dump(
+                        exclude={'limit', 'offset', 'q'}, exclude_none=True
+                    ),
+                    q=filters.q,
+                    limit=filters.limit,
+                    offset=filters.offset,
+                ),
+                filters.limit,
+                filters.offset,
             )
 
     @app.get('/artifacts')
-    def list_artifacts(
-        filters: Annotated[ArtifactFilters, Query()],
-    ) -> list[dict[str, Any]]:
+    def list_artifacts(filters: Annotated[ArtifactFilters, Query()]) -> dict[str, Any]:
         with _read_only_catalog(catalog_path) as store:
-            return list(
+            return _envelope(
                 search_artifacts(
                     store,
-                    filters=filters.model_dump(exclude_none=True),
-                )
+                    filters=filters.model_dump(
+                        exclude={'limit', 'offset', 'q', 'kind'}, exclude_none=True
+                    ),
+                    q=filters.q,
+                    kind=filters.kind,
+                    limit=filters.limit,
+                    offset=filters.offset,
+                ),
+                filters.limit,
+                filters.offset,
             )
 
     @app.get('/devices/{device_id}/experiments')
-    def device_experiments(device_id: str) -> list[dict[str, Any]]:
+    def device_experiments(
+        device_id: str,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        q: Annotated[str | None, Query()] = None,
+    ) -> dict[str, Any]:
         with _read_only_catalog(catalog_path) as store:
-            return list(find_device_experiments(store, device_id))
+            return _envelope(
+                find_device_experiments(
+                    store, device_id, q=q, limit=limit, offset=offset
+                ),
+                limit,
+                offset,
+            )
 
     @app.get('/devices/{device_id}/documents')
-    def device_documents(device_id: str) -> list[dict[str, Any]]:
+    def device_documents(
+        device_id: str,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        q: Annotated[str | None, Query()] = None,
+    ) -> dict[str, Any]:
         with _read_only_catalog(catalog_path) as store:
-            return list(find_device_documents(store, device_id))
+            return _envelope(
+                find_device_documents(
+                    store, device_id, q=q, limit=limit, offset=offset
+                ),
+                limit,
+                offset,
+            )
 
     @app.get('/artifacts/{artifact_id}/preview')
     def artifact_preview(artifact_id: str) -> dict[str, Any] | None:

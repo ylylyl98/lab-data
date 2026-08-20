@@ -25,9 +25,11 @@ const artifact: Artifact = {
   review_state: 'unknown',
   storage_source_id: 'source',
   relative_path: 'figure.png',
+  filename: 'figure.png',
   size_bytes: null,
   mtime_ns: null,
   metadata: {},
+  derived_from: [],
 };
 
 function preview(overrides: Partial<Preview>): Preview {

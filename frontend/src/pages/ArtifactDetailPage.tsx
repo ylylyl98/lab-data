@@ -4,23 +4,8 @@ import { getArtifact } from '../api';
 import { MetadataList } from '../components/MetadataList';
 import { PreviewView } from '../components/PreviewView';
 import { TypeBadge } from '../components/TypeBadge';
-import { displayValue } from '../format';
+import { artifactLabel, displayValue } from '../format';
 import type { Artifact } from '../types';
-
-const FIELD_LABELS: { key: keyof Artifact; label: string }[] = [
-  { key: 'artifact_id', label: 'Artifact ID' },
-  { key: 'device_id', label: 'Device ID' },
-  { key: 'experiment_id', label: 'Experiment ID' },
-  { key: 'role', label: 'Role' },
-  { key: 'category', label: 'Category' },
-  { key: 'extension', label: 'Extension' },
-  { key: 'media_type', label: 'Media type' },
-  { key: 'review_state', label: 'Review state' },
-  { key: 'storage_source_id', label: 'Storage source ID' },
-  { key: 'relative_path', label: 'Relative path' },
-  { key: 'size_bytes', label: 'Size bytes' },
-  { key: 'mtime_ns', label: 'Mtime (ns)' },
-];
 
 export function ArtifactDetailPage() {
   const { id = '' } = useParams();
@@ -61,38 +46,104 @@ export function ArtifactDetailPage() {
     <div className="page">
       <div className="page-head">
         <TypeBadge type="artifacts" />
-        <h1>{artifact.artifact_id}</h1>
+        <h1>{artifactLabel(artifact)}</h1>
       </div>
+
       <section className="panel">
-        <dl className="kv-list">
-          {FIELD_LABELS.map(({ key, label }) => (
-            <div className="kv-row" key={key}>
-              <dt>{label}</dt>
-              <dd>
-                {key === 'device_id' && artifact.device_id ? (
-                  <Link className="id-link" to={`/devices/${artifact.device_id}`}>
-                    {artifact.device_id}
-                  </Link>
-                ) : key === 'experiment_id' && artifact.experiment_id ? (
-                  <Link
-                    className="id-link"
-                    to={`/experiments/${artifact.experiment_id}`}
-                  >
-                    {artifact.experiment_id}
-                  </Link>
-                ) : (
-                  displayValue(artifact[key])
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        <h2>Metadata</h2>
-        <MetadataList metadata={artifact.metadata} />
+        <div className="panel-meta">
+          <span>{artifact.role}</span>
+          <span>{artifact.category}</span>
+          <span>{artifact.extension}</span>
+          <span>{artifact.review_state}</span>
+        </div>
+        {artifact.derived_from.length > 0 && (
+          <div className="role-group">
+            <h2>Derived</h2>
+            <ul className="link-list">
+              {artifact.derived_from.map((edge, index) => (
+                <li key={`${edge.source}-${edge.target}-${index}`}>
+                  {edge.source} {'->'} {edge.target} ({edge.relation})
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
+
       <section className="panel">
         <h2>Preview</h2>
         <PreviewView artifact={artifact} />
+      </section>
+
+      <section className="panel">
+        <h2>Location</h2>
+        <dl className="kv-list">
+          <div className="kv-row">
+            <dt>Relative path</dt>
+            <dd>{artifact.relative_path ?? 'null'}</dd>
+          </div>
+          <div className="kv-row">
+            <dt>Storage source</dt>
+            <dd>{artifact.storage_source_id ?? 'null'}</dd>
+          </div>
+          <div className="kv-row">
+            <dt>Device</dt>
+            <dd>
+              {artifact.device_id ? (
+                <Link
+                  className="id-link"
+                  to={`/devices/${artifact.device_id}`}
+                >
+                  {artifact.device_id}
+                </Link>
+              ) : (
+                <span className="muted">not linked</span>
+              )}
+            </dd>
+          </div>
+          <div className="kv-row">
+            <dt>Experiment</dt>
+            <dd>
+              {artifact.experiment_id ? (
+                <Link
+                  className="id-link"
+                  to={`/experiments/${artifact.experiment_id}`}
+                >
+                  {artifact.experiment_id}
+                </Link>
+              ) : (
+                <span className="muted">not linked</span>
+              )}
+            </dd>
+          </div>
+          <div className="kv-row">
+            <dt>Review state</dt>
+            <dd>{artifact.review_state}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="panel">
+        <h2>Metadata</h2>
+        <MetadataList metadata={artifact.metadata} />
+      </section>
+
+      <section className="panel">
+        <h2>Details</h2>
+        <dl className="kv-list">
+          <div className="kv-row">
+            <dt>Artifact ID</dt>
+            <dd className="muted">{artifact.artifact_id}</dd>
+          </div>
+          <div className="kv-row">
+            <dt>Size (bytes)</dt>
+            <dd>{displayValue(artifact.size_bytes)}</dd>
+          </div>
+          <div className="kv-row">
+            <dt>Modified (ns)</dt>
+            <dd>{displayValue(artifact.mtime_ns)}</dd>
+          </div>
+        </dl>
       </section>
     </div>
   );

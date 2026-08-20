@@ -132,3 +132,7 @@ dmypy.json
 # Local UI smoke-test seed and pytest scratch output
 .smoke/
 .ptmp/
+
+# Agent scratch / pytest basetemp output created during local development
+.analysis/
+.pytest-*/
