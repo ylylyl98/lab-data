@@ -16,6 +16,7 @@ nav:
   - Explanation: explanation/explanation.md
   - Reference: reference/references.md
   - Deployment: deployment.md
+  - Scientific Tools: scientific_tools.md
 plugins:
   - search
 theme:
