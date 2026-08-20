@@ -17,6 +17,7 @@ nav:
   - Reference: reference/references.md
   - Deployment: deployment.md
   - Scientific Tools: scientific_tools.md
+  - MCP Adapter: mcp_adapter.md
 plugins:
   - search
 theme:

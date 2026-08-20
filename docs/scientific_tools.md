@@ -112,18 +112,18 @@ validated preview root, never from a caller-supplied path.
 
 ## MCP Readiness
 
-Status: the tool layer is implemented; a thin MCP adapter is prepared but
-deferred.  The recommended adapter shape is:
+Status: the tool layer is implemented and the thin MCP adapter ships in
+`lab_data.mcp_adapter` (see [MCP Adapter](mcp_adapter.md)).  The adapter shape
+is:
 
 ```text
 MCP tools -> ScientificToolLayer -> CatalogStore
 ```
 
-The adapter would map each MCP tool to one `ScientificToolLayer` method and
-return the JSON-safe payload verbatim.  It should be built and exercised in a
-separate local process against a local catalog first; any experimental
-endpoint stays local-only (`127.0.0.1`) and must never be exposed
-unauthenticated on the CMU-Secure deployment.
+The adapter maps each MCP tool to one `ScientificToolLayer` method and returns
+the JSON-safe payload verbatim over stdio.  It is local-only and
+unauthenticated; it must never be exposed unauthenticated on the CMU-Secure
+deployment or the Internet.
 
 Future auth boundary: any MCP/tool endpoint must use the same access control
 as the browser UI (the read-only catalog browser), which today means campus
