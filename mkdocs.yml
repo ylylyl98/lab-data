@@ -19,6 +19,7 @@ nav:
   - Scientific Tools: scientific_tools.md
   - MCP Adapter: mcp_adapter.md
   - MCP Client Setup: mcp_client_setup.md
+  - ChatGPT MCP Tunnel: chatgpt_mcp_tunnel.md
 plugins:
   - search
 theme:

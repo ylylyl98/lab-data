@@ -126,3 +126,7 @@ Authenticated remote access is not implemented. If MCP access is ever exposed
 beyond the local machine, it must sit behind the same access-control boundary
 as the browser UI (campus or VPN reachability), with authentication enforced
 in front of the server. Until then, keep this stdio server local-only.
+
+For connecting the stdio adapter to ChatGPT without opening any inbound
+listener, see
+[ChatGPT Access via the OpenAI Secure MCP Tunnel](chatgpt_mcp_tunnel.md).
