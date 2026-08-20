@@ -136,3 +136,4 @@ dmypy.json
 # Agent scratch / pytest basetemp output created during local development
 .analysis/
 .pytest-*/
+.cache-*/
