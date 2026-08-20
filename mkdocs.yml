@@ -15,6 +15,7 @@ nav:
       - Contribute to the documentation: how_to/contribute_to_the_documentation.md
   - Explanation: explanation/explanation.md
   - Reference: reference/references.md
+  - Deployment: deployment.md
 plugins:
   - search
 theme:

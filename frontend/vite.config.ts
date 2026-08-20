@@ -5,19 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/devices': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '/experiments': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '/artifacts': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '/summary': {
+      '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },

@@ -819,7 +819,9 @@ def test_device_experiments_api_returns_linked_experiments(tmp_path):
     connection.close()
 
     client = TestClient(create_app(catalog_path, tmp_path / 'preview'))
-    response = client.get('/devices/D356/experiments', params={'limit': 5, 'offset': 0})
+    response = client.get(
+        '/api/devices/D356/experiments', params={'limit': 5, 'offset': 0}
+    )
     assert response.status_code == 200  # noqa: PLR2004
     payload = response.json()
     assert payload['total_count'] == 5  # noqa: PLR2004
@@ -844,23 +846,23 @@ def test_device_experiments_api_returns_linked_experiments(tmp_path):
         for path in trace['files_by_role']['figure']
     } == {'trace_PL_linear', 'trace_PL_log', 'trace_avg1_DR_R_Self', 'trace_avg1_DR_R_External'}
 
-    d345 = client.get('/devices/D345/experiments')
+    d345 = client.get('/api/devices/D345/experiments')
     assert d345.status_code == 200  # noqa: PLR2004
     assert d345.json()['total_count'] == 1  # noqa: PLR2004
     assert d345.json()['items'][0]['experiment_id'] == 'D345-0000'
 
-    empty = client.get('/devices/D357/experiments')
+    empty = client.get('/api/devices/D357/experiments')
     assert empty.status_code == 200  # noqa: PLR2004
     assert empty.json()['total_count'] == 0
 
-    searched = client.get('/experiments', params={'q': 'D356'})
+    searched = client.get('/api/experiments', params={'q': 'D356'})
     assert searched.json()['total_count'] == 5  # noqa: PLR2004
 
-    exact = client.get('/experiments', params={'q': 'YZ247-0432'})
+    exact = client.get('/api/experiments', params={'q': 'YZ247-0432'})
     assert [item['experiment_id'] for item in exact.json()['items']] == ['YZ247-0432']
 
     artifacts = client.get(
-        '/artifacts', params={'device_id': 'D356', 'limit': 5, 'offset': 0}
+        '/api/artifacts', params={'device_id': 'D356', 'limit': 5, 'offset': 0}
     )
     assert artifacts.status_code == 200  # noqa: PLR2004
     assert len(artifacts.json()['items']) == 5  # noqa: PLR2004
@@ -1011,7 +1013,7 @@ def test_api_projects_review_evidence_for_adjudicated_experiment(tmp_path):
     connection.close()
 
     client = TestClient(create_app(catalog_path, tmp_path / 'preview'))
-    response = client.get('/devices/D356/experiments', params={'limit': 10, 'offset': 0})
+    response = client.get('/api/devices/D356/experiments', params={'limit': 10, 'offset': 0})
     assert response.status_code == 200  # noqa: PLR2004
     payload = response.json()
     assert payload['total_count'] == 2  # noqa: PLR2004
@@ -1061,7 +1063,7 @@ def test_api_projects_review_evidence_for_adjudicated_experiment(tmp_path):
     assert by_id['D356-0001']['review_evidence'] is None
     assert by_id['D356-0001']['needs_review'] is False
 
-    exact = client.get('/experiments', params={'experiment_id': 'D356-0002'})
+    exact = client.get('/api/experiments', params={'experiment_id': 'D356-0002'})
     assert exact.status_code == 200  # noqa: PLR2004
     assert exact.json()['total_count'] == 1  # noqa: PLR2004
     assert (

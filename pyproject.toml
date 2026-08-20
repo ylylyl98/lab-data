@@ -45,6 +45,9 @@ dev = [
     "mkdocs-click",
     "pytest-asyncio",
 ]
+server = [
+    "uvicorn",
+]
 [dependency-groups]
 north = [
     "jupyterlab",

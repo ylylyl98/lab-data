@@ -8,16 +8,16 @@ const BACKEND_TARGET = 'http://127.0.0.1:8000';
 describe('vite dev server proxy', () => {
   const proxy = viteConfig.server?.proxy;
 
-  it('proxies /summary to the FastAPI backend', () => {
-    const summary = proxy?.['/summary'] as { target?: string; changeOrigin?: boolean } | undefined;
-    expect(summary?.target).toBe(BACKEND_TARGET);
-    expect(summary?.changeOrigin).toBe(true);
+  it('proxies /api to the FastAPI backend', () => {
+    const rule = proxy?.['/api'] as { target?: string; changeOrigin?: boolean } | undefined;
+    expect(rule?.target).toBe(BACKEND_TARGET);
+    expect(rule?.changeOrigin).toBe(true);
   });
 
-  it.each(['/devices', '/experiments', '/artifacts'])(
-    'keeps %s pointed at the FastAPI backend',
+  it.each(['/api/summary', '/api/devices', '/api/experiments', '/api/artifacts'])(
+    'forwards %s through the /api proxy',
     (key) => {
-      const rule = proxy?.[key] as { target?: string; changeOrigin?: boolean } | undefined;
+      const rule = proxy?.['/api'] as { target?: string; changeOrigin?: boolean } | undefined;
       expect(rule?.target).toBe(BACKEND_TARGET);
       expect(rule?.changeOrigin).toBe(true);
     },

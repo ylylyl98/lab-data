@@ -154,18 +154,18 @@ def test_routes_are_read_only_and_deterministic(tmp_path):
 
     assert client.get('/').json() == {'message': 'Hello World'}
 
-    devices = client.get('/devices')
+    devices = client.get('/api/devices')
     assert devices.status_code == 200  # noqa: PLR2004
-    assert devices.json()['total_count'] == 2
-    assert devices.json()['limit'] == 50
+    assert devices.json()['total_count'] == 2  # noqa: PLR2004
+    assert devices.json()['limit'] == 50  # noqa: PLR2004
     assert devices.json()['offset'] == 0
     assert [item['device_id'] for item in devices.json()['items']] == ['D356', 'D357']
 
-    filtered = client.get('/devices', params={'device_id': 'D356'})
+    filtered = client.get('/api/devices', params={'device_id': 'D356'})
     assert [item['device_id'] for item in filtered.json()['items']] == ['D356']
     assert filtered.json()['items'][0]['display_label'] == 'A'
 
-    experiments = client.get('/experiments')
+    experiments = client.get('/api/experiments')
     assert experiments.status_code == 200  # noqa: PLR2004
     assert [item['experiment_id'] for item in experiments.json()['items']] == [
         'exp-a',
@@ -173,10 +173,10 @@ def test_routes_are_read_only_and_deterministic(tmp_path):
         'exp-b',
     ]
 
-    filtered = client.get('/experiments', params={'experiment_id': 'exp-a'})
+    filtered = client.get('/api/experiments', params={'experiment_id': 'exp-a'})
     assert [item['experiment_id'] for item in filtered.json()['items']] == ['exp-a']
 
-    artifacts = client.get('/artifacts')
+    artifacts = client.get('/api/artifacts')
     assert [item['artifact_id'] for item in artifacts.json()['items']] == [
         'doc-a',
         'doc-b',
@@ -184,27 +184,27 @@ def test_routes_are_read_only_and_deterministic(tmp_path):
         'table',
     ]
 
-    filtered = client.get('/artifacts', params={'device_id': 'D356'})
+    filtered = client.get('/api/artifacts', params={'device_id': 'D356'})
     assert [item['artifact_id'] for item in filtered.json()['items']] == [
         'doc-a',
         'table',
     ]
 
-    device_experiments = client.get('/devices/D356/experiments')
+    device_experiments = client.get('/api/devices/D356/experiments')
     assert [
         item['experiment_id'] for item in device_experiments.json()['items']
     ] == ['exp-a']
 
-    device_documents = client.get('/devices/D356/documents')
+    device_documents = client.get('/api/devices/D356/documents')
     assert [item['artifact_id'] for item in device_documents.json()['items']] == ['doc-a']
 
-    preview = client.get('/artifacts/table/preview')
+    preview = client.get('/api/artifacts/table/preview')
     assert preview.status_code == 200  # noqa: PLR2004
     assert preview.headers['content-type'].startswith('application/json')
     assert preview.json()['artifact_id'] == 'table'
     assert preview.json()['preview_id']
 
-    missing_preview = client.get('/artifacts/missing/preview')
+    missing_preview = client.get('/api/artifacts/missing/preview')
     assert missing_preview.status_code == 200  # noqa: PLR2004
     assert missing_preview.json() is None
 
@@ -217,7 +217,7 @@ def test_experiment_provenance_projections(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    measured = client.get('/experiments', params={'experiment_id': 'exp-a'})
+    measured = client.get('/api/experiments', params={'experiment_id': 'exp-a'})
     measured_item = measured.json()['items'][0]
     assert measured_item['review_state'] == 'unknown'
     assert measured_item['measured_on'] == {
@@ -228,7 +228,7 @@ def test_experiment_provenance_projections(tmp_path):
         'review_status': 'unknown',
     }
 
-    free = client.get('/experiments', params={'experiment_id': 'exp-b'})
+    free = client.get('/api/experiments', params={'experiment_id': 'exp-b'})
     free_item = free.json()['items'][0]
     assert free_item['measured_on'] is None
     assert free_item['review_state'] == 'unknown'
@@ -288,7 +288,7 @@ def test_artifact_derived_from_projection(tmp_path):
     catalog_path = _lineage_seed(tmp_path)
     client = TestClient(create_app(catalog_path, None))
 
-    response = client.get('/artifacts', params={'artifact_id': 'fig-linear'})
+    response = client.get('/api/artifacts', params={'artifact_id': 'fig-linear'})
     assert response.status_code == 200  # noqa: PLR2004
     item = response.json()['items'][0]
     assert item['derived_from'] == [
@@ -308,7 +308,7 @@ def test_missing_catalog_path_fails_without_creating_files(tmp_path):
     catalog_path = tmp_path / 'missing' / 'catalog.db'
     client = TestClient(create_app(catalog_path, tmp_path / 'preview'))
 
-    for route in ('/devices', '/experiments', '/artifacts'):
+    for route in ('/api/devices', '/api/experiments', '/api/artifacts'):
         response = client.get(route)
         assert response.status_code == 503  # noqa: PLR2004
         assert response.json()['detail'] == 'catalog is unavailable'
@@ -320,7 +320,7 @@ def test_missing_catalog_path_fails_without_creating_files(tmp_path):
 
 def test_unconfigured_catalog_fails_clearly():
     client = TestClient(create_app(None, None))
-    response = client.get('/devices')
+    response = client.get('/api/devices')
     assert response.status_code == 503  # noqa: PLR2004
     assert response.json()['detail'] == 'catalog is not configured'
 
@@ -328,7 +328,7 @@ def test_unconfigured_catalog_fails_clearly():
 def test_unconfigured_preview_fails_clearly(tmp_path):
     catalog_path, _, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, None))
-    response = client.get('/artifacts/table/preview')
+    response = client.get('/api/artifacts/table/preview')
     assert response.status_code == 503  # noqa: PLR2004
     assert response.json()['detail'] == 'preview cache is not configured'
 
@@ -336,7 +336,7 @@ def test_unconfigured_preview_fails_clearly(tmp_path):
 def test_invalid_query_type_returns_fastapi_validation_error(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
-    response = client.get('/experiments', params={'needs_review': 'not-a-bool'})
+    response = client.get('/api/experiments', params={'needs_review': 'not-a-bool'})
     assert response.status_code == 422  # noqa: PLR2004
 
 
@@ -400,44 +400,48 @@ def test_experiment_scalar_equality_filters(tmp_path):
     client = TestClient(create_app(catalog_path, None))
 
     assert [
-        item['experiment_id'] for item in client.get('/experiments').json()['items']
+        item['experiment_id'] for item in client.get('/api/experiments').json()['items']
     ] == ['exp-a', 'exp-b', 'exp-c']
 
-    broad = client.get('/experiments', params={'sample_id': 'S1'})
+    broad = client.get('/api/experiments', params={'sample_id': 'S1'})
     assert broad.status_code == 200  # noqa: PLR2004
     assert [item['experiment_id'] for item in broad.json()['items']] == [
         'exp-a',
         'exp-b',
     ]
 
-    by_measurement = client.get('/experiments', params={'measurement_type': 'optical'})
+    by_measurement = client.get(
+        '/api/experiments', params={'measurement_type': 'optical'}
+    )
     assert [item['experiment_id'] for item in by_measurement.json()['items']] == [
         'exp-a',
         'exp-c',
     ]
 
-    by_temperature = client.get('/experiments', params={'temperature_K': '77.0'})
+    by_temperature = client.get('/api/experiments', params={'temperature_K': '77.0'})
     assert [item['experiment_id'] for item in by_temperature.json()['items']] == ['exp-a']
 
-    by_averages = client.get('/experiments', params={'averages': '10'})
+    by_averages = client.get('/api/experiments', params={'averages': '10'})
     assert [item['experiment_id'] for item in by_averages.json()['items']] == ['exp-b']
 
-    by_field = client.get('/experiments', params={'magnetic_field_T': '1.5'})
+    by_field = client.get('/api/experiments', params={'magnetic_field_T': '1.5'})
     assert [item['experiment_id'] for item in by_field.json()['items']] == ['exp-c']
 
-    by_integration = client.get('/experiments', params={'integration_time_s': '0.06'})
+    by_integration = client.get(
+        '/api/experiments', params={'integration_time_s': '0.06'}
+    )
     assert [item['experiment_id'] for item in by_integration.json()['items']] == ['exp-c']
 
-    by_point = client.get('/experiments', params={'measurement_point_label': 'P1'})
+    by_point = client.get('/api/experiments', params={'measurement_point_label': 'P1'})
     assert [item['experiment_id'] for item in by_point.json()['items']] == ['exp-a']
 
-    by_confidence = client.get('/experiments', params={'confidence': '0.9'})
+    by_confidence = client.get('/api/experiments', params={'confidence': '0.9'})
     assert [item['experiment_id'] for item in by_confidence.json()['items']] == ['exp-a']
 
-    by_review = client.get('/experiments', params={'needs_review': 'true'})
+    by_review = client.get('/api/experiments', params={'needs_review': 'true'})
     assert [item['experiment_id'] for item in by_review.json()['items']] == ['exp-b']
 
-    exact = client.get('/experiments', params={'experiment_id': 'exp-b'})
+    exact = client.get('/api/experiments', params={'experiment_id': 'exp-b'})
     assert [item['experiment_id'] for item in exact.json()['items']] == ['exp-b']
 
 
@@ -459,7 +463,7 @@ def test_experiment_scalar_equality_filters(tmp_path):
 def test_experiment_remaining_scalar_filters(tmp_path, param, value, expected):
     catalog_path = _experiment_filter_seed(tmp_path)
     client = TestClient(create_app(catalog_path, None))
-    response = client.get('/experiments', params={param: value})
+    response = client.get('/api/experiments', params={param: value})
     assert response.status_code == 200  # noqa: PLR2004
     assert [item['experiment_id'] for item in response.json()['items']] == [expected]
 
@@ -467,9 +471,9 @@ def test_experiment_remaining_scalar_filters(tmp_path, param, value, expected):
 @pytest.mark.parametrize(
     ('route', 'misspelled'),
     [
-        ('/devices', 'devce_id'),
-        ('/experiments', 'sampel_id'),
-        ('/artifacts', 'artifct_id'),
+        ('/api/devices', 'devce_id'),
+        ('/api/experiments', 'sampel_id'),
+        ('/api/artifacts', 'artifct_id'),
     ],
 )
 def test_unknown_query_parameters_return_422(tmp_path, route, misspelled):
@@ -485,7 +489,7 @@ def test_unknown_query_parameters_return_422(tmp_path, route, misspelled):
 def test_summary_counts(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
-    assert client.get('/summary').json() == {
+    assert client.get('/api/summary').json() == {
         'devices': 2,
         'experiments': 3,
         'artifacts': 4,
@@ -496,53 +500,53 @@ def test_list_envelope_shape_and_pagination_bounds(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    body = client.get('/artifacts', params={'limit': 2, 'offset': 0}).json()
+    body = client.get('/api/artifacts', params={'limit': 2, 'offset': 0}).json()
     assert set(body) == {'items', 'total_count', 'limit', 'offset'}
-    assert len(body['items']) == 2
-    assert body['limit'] == 2
+    assert len(body['items']) == 2  # noqa: PLR2004
+    assert body['limit'] == 2  # noqa: PLR2004
     assert body['offset'] == 0
-    assert body['total_count'] == 4
+    assert body['total_count'] == 4  # noqa: PLR2004
 
-    assert client.get('/artifacts', params={'limit': 0}).status_code == 422  # noqa: PLR2004
-    assert client.get('/artifacts', params={'limit': 201}).status_code == 422  # noqa: PLR2004
-    assert client.get('/artifacts', params={'offset': -1}).status_code == 422  # noqa: PLR2004
+    assert client.get('/api/artifacts', params={'limit': 0}).status_code == 422  # noqa: PLR2004
+    assert client.get('/api/artifacts', params={'limit': 201}).status_code == 422  # noqa: PLR2004
+    assert client.get('/api/artifacts', params={'offset': -1}).status_code == 422  # noqa: PLR2004
 
 
 def test_artifact_pagination_adjacent_pages_do_not_overlap(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    first = client.get('/artifacts', params={'limit': 2, 'offset': 0}).json()
-    second = client.get('/artifacts', params={'limit': 2, 'offset': 2}).json()
+    first = client.get('/api/artifacts', params={'limit': 2, 'offset': 0}).json()
+    second = client.get('/api/artifacts', params={'limit': 2, 'offset': 2}).json()
 
     assert [item['artifact_id'] for item in first['items']] == ['doc-a', 'doc-b']
     assert [item['artifact_id'] for item in second['items']] == ['slides-b', 'table']
-    assert first['total_count'] == second['total_count'] == 4
+    assert first['total_count'] == second['total_count'] == 4  # noqa: PLR2004
 
 
 def test_artifact_kind_filter(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    data = client.get('/artifacts', params={'kind': 'data'})
+    data = client.get('/api/artifacts', params={'kind': 'data'})
     assert [item['artifact_id'] for item in data.json()['items']] == ['table']
     assert data.json()['total_count'] == 1
-    assert client.get('/artifacts', params={'kind': 'invalid'}).status_code == 422  # noqa: PLR2004
+    assert client.get('/api/artifacts', params={'kind': 'invalid'}).status_code == 422  # noqa: PLR2004
 
 
 def test_q_search_is_case_insensitive_substring(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    devices = client.get('/devices', params={'q': '356'})
+    devices = client.get('/api/devices', params={'q': '356'})
     assert [item['device_id'] for item in devices.json()['items']] == ['D356']
 
-    experiments = client.get('/experiments', params={'q': 'd356'})
+    experiments = client.get('/api/experiments', params={'q': 'd356'})
     assert [item['experiment_id'] for item in experiments.json()['items']] == [
         'exp-a',
         'exp-inferred',
     ]
 
-    artifacts = client.get('/artifacts', params={'q': 'D356'})
+    artifacts = client.get('/api/artifacts', params={'q': 'D356'})
     assert [item['artifact_id'] for item in artifacts.json()['items']] == ['doc-a']
     assert artifacts.json()['items'][0]['filename'] == 'D356.ppt'

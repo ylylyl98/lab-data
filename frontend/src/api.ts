@@ -11,6 +11,7 @@ import type {
 } from './types';
 
 const DEFAULT_PAGE_SIZE = 50;
+const API_BASE = '/api';
 
 type QueryValue = string | number | undefined;
 
@@ -27,7 +28,7 @@ function buildQuery(params: Record<string, QueryValue>): string {
 }
 
 async function request<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+  const response = await fetch(`${API_BASE}${path}`);
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status} ${response.statusText}`);
   }
@@ -179,7 +180,7 @@ export function getPreview(artifactId: string): Promise<Preview | null> {
 }
 
 export function assetUrl(artifactId: string, path: string): string {
-  return `/artifacts/${artifactId}/preview/assets/${path}`;
+  return `${API_BASE}/artifacts/${artifactId}/preview/assets/${path}`;
 }
 
 export async function fetchAssetText(

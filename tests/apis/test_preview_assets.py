@@ -53,7 +53,7 @@ def test_preview_asset_route_serves_validated_bytes(tmp_path):
     catalog_path, preview_root, table_bytes = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    response = client.get('/artifacts/table/preview/assets/table.json')
+    response = client.get('/api/artifacts/table/preview/assets/table.json')
     assert response.status_code == 200  # noqa: PLR2004
     assert response.headers['content-type'] == 'application/json'
     assert response.content == table_bytes
@@ -63,7 +63,7 @@ def test_preview_asset_route_rejects_unknown_asset(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    response = client.get('/artifacts/table/preview/assets/missing.png')
+    response = client.get('/api/artifacts/table/preview/assets/missing.png')
     assert response.status_code == 404  # noqa: PLR2004
     assert response.json()['detail'] == 'preview asset not found'
 
@@ -72,7 +72,7 @@ def test_preview_asset_route_rejects_manifest_external_path(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    response = client.get('/artifacts/table/preview/assets/../../etc')
+    response = client.get('/api/artifacts/table/preview/assets/../../etc')
     assert response.status_code == 404  # noqa: PLR2004
     # Starlette may normalize the traversal before routing, but either way the
     # request must be rejected and never serve bytes.
@@ -83,7 +83,7 @@ def test_preview_asset_route_serves_svg_media_type(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    response = client.get('/artifacts/table/preview/assets/plot.svg')
+    response = client.get('/api/artifacts/table/preview/assets/plot.svg')
     assert response.status_code == 200  # noqa: PLR2004
     assert response.headers['content-type'] == 'image/svg+xml'
 
@@ -92,7 +92,7 @@ def test_preview_asset_route_rejects_unknown_artifact(tmp_path):
     catalog_path, preview_root, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, preview_root))
 
-    response = client.get('/artifacts/missing/preview/assets/table.json')
+    response = client.get('/api/artifacts/missing/preview/assets/table.json')
     assert response.status_code == 404  # noqa: PLR2004
     assert response.json()['detail'] == 'preview asset not found'
 
@@ -101,6 +101,6 @@ def test_preview_asset_route_requires_preview_root(tmp_path):
     catalog_path, _, _ = _seed(tmp_path)
     client = TestClient(create_app(catalog_path, None))
 
-    response = client.get('/artifacts/table/preview/assets/table.json')
+    response = client.get('/api/artifacts/table/preview/assets/table.json')
     assert response.status_code == 503  # noqa: PLR2004
     assert response.json()['detail'] == 'preview cache is not configured'
