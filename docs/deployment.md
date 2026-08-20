@@ -79,11 +79,89 @@ over the repository default).
 all interfaces; use that only when the campus or VPN network policy allows
 exposing the lab server.
 
+## Operational deployment on CMU-Secure
+
+`scripts/start_lab_data.ps1` is the startup entry point for serving the
+browser to lab members on the campus network. It resolves the repository root
+from its own location, so it works from any caller working directory:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_lab_data.ps1
+```
+
+The default host is `0.0.0.0` and the default port is `8765`, matching the
+existing inbound firewall rule for TCP 8765 (display name
+`lab-data server inbound TCP 8765 (CMU-Secure Public)`, Public profile) that
+already allows campus access. This script never modifies firewall rules,
+network policy, VPN state, or credentials. Campus policy beyond the existence
+of that rule is not claimed here.
+
+### Parameters
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `-Host` | `0.0.0.0` | Bind address; `127.0.0.1` for local-only serving |
+| `-Port` | `8765` | Listen port |
+| `-Catalog` | `LAB_DATA_CATALOG_PATH` | Read-only SQLite catalog file (required) |
+| `-PreviewRoot` | `LAB_DATA_PREVIEW_ROOT` | Preview cache directory (required) |
+| `-FrontendDir` | `FRONTEND_DIST`, else `<repo>/frontend/dist` | Built frontend |
+| `-DryRun` / `-NoLaunch` | off | Validate config and print URLs, do not start |
+| `-ShowAddress` | off | Print candidate URLs and exit (no validation) |
+
+Environment variables are used as fallbacks when parameters are omitted:
+`LAB_DATA_HOST`, `LAB_DATA_PORT`, `LAB_DATA_CATALOG_PATH`,
+`LAB_DATA_PREVIEW_ROOT`, and `FRONTEND_DIST`.
+
+### Validation and port conflicts
+
+Before starting, the script verifies that the catalog file, preview
+directory, and frontend `index.html` exist, and that the chosen port is free.
+Failures print a clear message to stderr and exit non-zero:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_lab_data.ps1 -DryRun
+# error: port 8765 is already in use by python (PID 31432) ...; exit code 1
+```
+
+When the port is occupied the script reports the owning process (name and
+PID) and stops; it never kills or steals the port. Re-run with `-Port` set to
+another port.
+
+### URL discovery
+
+When bound to `0.0.0.0`, the script prints `http://<ip>:<port>/` for each
+connected IPv4 interface, ordered so interfaces carrying the default route
+(typically the campus `CMU-SECURE` Wi-Fi link) appear first, followed by
+`http://127.0.0.1:<port>/`. Addresses are discovered at runtime, so they stay
+correct if DHCP changes them.
+
+`scripts/show_lab_data_url.ps1` is the read-only address helper: it prints
+the same candidate URLs for a host/port without touching configuration,
+network, or firewall state:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/show_lab_data_url.ps1
+```
+
+### Lab-member flow
+
+1. On the lab host, run `scripts/start_lab_data.ps1` (or first `-DryRun` to
+   inspect the URLs, then start for real).
+2. Note the campus URL shown first (for example
+   `http://172.26.65.61:8765/`); this is the address lab members use.
+3. From another PC on CMU-Secure, open that URL in a browser. The catalog
+   browser is read-only: every API route is GET and the deployment never
+   writes to the catalog, preview cache, or frontend build.
+
+Off-campus users should connect through the CMU VPN to the campus network
+before using the lab URL.
+
 ## Campus/VPN access
 
 Off-campus users should connect through the CMU VPN to the campus network and
 then to the lab server. A future authentication/SSO boundary will gate
-access. Campus routing and firewall rules are not approved or tested here.
+access. Campus routing and firewall rules beyond the existing inbound TCP
+8765 rule are not approved or tested here.
 
 ## Read-only guarantee
 
