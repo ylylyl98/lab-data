@@ -33,6 +33,7 @@ from lab_data.scientific_catalog import (
     StorageReference,
     deterministic_storage_reference_id,
 )
+from lab_data.scientific_tools import MAX_LIMIT, MIN_LIMIT
 
 EXPECTED_TOOLS = frozenset(
     {
@@ -49,6 +50,7 @@ EXPECTED_TOOLS = frozenset(
         'get_artifact_preview',
     }
 )
+EXPECTED_TOOL_COUNT = 11
 
 # FastMCP 1.x emits list returns as one content item per element.
 _LIST_TOOLS = frozenset({'get_provenance', 'get_lineage'})
@@ -354,6 +356,43 @@ async def test_exposed_tool_set_is_exactly_the_readonly_set(tmp_path):
                 token in name
                 for token in ('create', 'update', 'delete', 'write', 'upload', 'insert')
             )
+
+
+@pytest.mark.asyncio
+async def test_tool_discovery_surface_is_complete_unique_and_bounded(tmp_path):
+    """Discovery surface: 11 read-only tools, unique names, and bounded schemas."""
+    async with _mcp_session(*_corpus(tmp_path)) as client:
+        tools = (await client.list_tools()).tools
+        names = [tool.name for tool in tools]
+        assert len(tools) == len(EXPECTED_TOOLS) == EXPECTED_TOOL_COUNT
+        assert set(names) == EXPECTED_TOOLS
+        assert len(names) == len(set(names)), 'duplicate tool names exposed'
+        for tool in tools:
+            assert not any(
+                token in tool.name
+                for token in (
+                    'create',
+                    'update',
+                    'delete',
+                    'write',
+                    'upload',
+                    'save',
+                    'insert',
+                )
+            )
+            assert tool.description, f'{tool.name} has no description'
+            schema = tool.inputSchema
+            assert schema and schema.get('type') == 'object'
+            properties = schema.get('properties', {})
+            if 'limit' in properties:
+                assert properties['limit']['minimum'] == MIN_LIMIT
+                assert properties['limit']['maximum'] == MAX_LIMIT
+            if 'offset' in properties:
+                assert properties['offset']['minimum'] == 0
+            for key in ('device_id', 'experiment_id', 'artifact_id', 'subject_id', 'entity_id'):
+                if key in properties:
+                    assert properties[key].get('minLength', 0) >= 1
+                    assert key in schema.get('required', ())
 
 
 @pytest.mark.asyncio

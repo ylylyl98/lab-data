@@ -74,6 +74,7 @@ def create_server(layer: ScientificToolLayer) -> FastMCP:
         offset: _Offset = 0,
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Search device records by substring or exact filter; q is a search string, not a canonical ID."""
         return layer.search_devices(
             q, limit=limit, offset=offset, filters=filters
         )
@@ -85,6 +86,7 @@ def create_server(layer: ScientificToolLayer) -> FastMCP:
         offset: _Offset = 0,
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Search experiments by substring or exact structured filters (e.g. measurement_type, temperature_K); surfaces review state."""
         return layer.search_experiments(
             q, limit=limit, offset=offset, filters=filters
         )
@@ -97,20 +99,24 @@ def create_server(layer: ScientificToolLayer) -> FastMCP:
         kind: str | None = None,
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Search artifact (file-like) records by substring, kind, or exact filter; q is a search string, not a canonical ID."""
         return layer.search_artifacts(
             q, limit=limit, offset=offset, kind=kind, filters=filters
         )
 
     @server.tool()
     def get_device(device_id: _NonEmptyId) -> dict[str, Any] | None:
+        """Return one exact device by its canonical device_id, or None when absent."""
         return layer.get_device(device_id)
 
     @server.tool()
     def get_experiment(experiment_id: _NonEmptyId) -> dict[str, Any] | None:
+        """Return one exact experiment by its canonical experiment_id, including files by role, measured_on, and review state."""
         return layer.get_experiment(experiment_id)
 
     @server.tool()
     def get_artifact(artifact_id: _NonEmptyId) -> dict[str, Any] | None:
+        """Return one exact artifact by its canonical artifact_id, including derived_from edges."""
         return layer.get_artifact(artifact_id)
 
     @server.tool()
@@ -120,6 +126,7 @@ def create_server(layer: ScientificToolLayer) -> FastMCP:
         offset: _Offset = 0,
         q: str | None = None,
     ) -> dict[str, Any]:
+        """Return the bounded page of experiments explicitly measured on one device (persisted measured_on relationships)."""
         return layer.find_device_experiments(
             device_id, limit=limit, offset=offset, q=q
         )
@@ -131,6 +138,7 @@ def create_server(layer: ScientificToolLayer) -> FastMCP:
         offset: _Offset = 0,
         q: str | None = None,
     ) -> dict[str, Any]:
+        """Return the bounded page of PDF/PPT/PPTX documents bound to one device."""
         return layer.find_device_documents(
             device_id, limit=limit, offset=offset, q=q
         )
@@ -139,16 +147,19 @@ def create_server(layer: ScientificToolLayer) -> FastMCP:
     def get_provenance(
         subject_type: _NonEmptyId, subject_id: _NonEmptyId
     ) -> list[dict[str, Any]]:
+        """Return persisted metadata claims for one subject (why/how a value is known, with source and review status); nothing is inferred."""
         return layer.get_provenance(subject_type, subject_id)
 
     @server.tool()
     def get_lineage(
         entity_type: _NonEmptyId, entity_id: _NonEmptyId
     ) -> list[dict[str, Any]]:
+        """Return persisted relationship edges touching one entity, oriented upstream source to downstream target (raw -> processed -> figure)."""
         return layer.get_lineage(entity_type, entity_id)
 
     @server.tool()
     def get_artifact_preview(artifact_id: _NonEmptyId) -> dict[str, Any] | None:
+        """Return the validated metadata-only preview report (manifest plus asset metadata) for one artifact; binary content is not served."""
         return layer.get_artifact_preview(artifact_id)
 
     return server

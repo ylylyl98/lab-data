@@ -6,6 +6,10 @@ Context Protocol (MCP) using the official Python SDK, transported over stdio.
 > The MCP adapter is local-only and unauthenticated in this phase. Do not
 > expose it directly to CMU-Secure or the Internet.
 
+For how to point a real MCP-capable client (Claude Desktop, ChatGPT, or any
+stdio MCP client) at this server, see
+[MCP Client Setup](mcp_client_setup.md).
+
 ## Architecture
 
 ```text
@@ -44,6 +48,27 @@ python -m lab_data.mcp_adapter
 
 Startup fails with a clear message and a non-zero exit when either variable is
 missing or does not point at a readable catalog file or preview directory.
+
+### Launch contract
+
+The server is launched as a Python module over stdio and never binds a TCP
+port. The launch contract is:
+
+```text
+command:  <repo>\.venv\Scripts\python.exe
+args:     -m lab_data.mcp_adapter
+env:      LAB_DATA_CATALOG_PATH=<catalog .sqlite>
+          LAB_DATA_PREVIEW_ROOT=<preview cache directory>
+cwd:      <repo>
+```
+
+On the current host, `<repo>` is `C:\CodexRepos\lab-data` and the interpreter
+is `C:\CodexRepos\lab-data\.venv\Scripts\python.exe`. These host-specific
+values belong only in a client's server configuration; the source code reads
+everything from environment variables and contains no machine-specific paths.
+Only `LAB_DATA_CATALOG_PATH` and `LAB_DATA_PREVIEW_ROOT` are required.
+`LAB_DATA_HOST`, `LAB_DATA_PORT`, and `FRONTEND_DIST` are browser-deployment
+settings and are not read by the MCP adapter.
 
 ## Local Test and Smoke
 

@@ -18,6 +18,7 @@ nav:
   - Deployment: deployment.md
   - Scientific Tools: scientific_tools.md
   - MCP Adapter: mcp_adapter.md
+  - MCP Client Setup: mcp_client_setup.md
 plugins:
   - search
 theme:
